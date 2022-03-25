@@ -13,13 +13,14 @@ process unstarch {
  label "unstarch"
 
  input: 
- path hotspots from hotspots_file
+ path hotspots from params.hotspots_file
 
  output:
- path(intervals) into intervals_ch
+ path intervals into intervals_ch
+
+ beforeScript 'module load bedops'
 
  """
-   module load bedops;
   unstarch $params.hotspots_file \
     | grep -v "_random" \
     | grep -v "chrUn" \
@@ -34,9 +35,9 @@ process learn_dm {
   label "learn"
 
   input:
-  path ref from genome_file
-  path bias from bias_file
-  path bam from bam_file
+  path ref from params.genome_file
+  path bias from params.bias_file
+  path bam from params.bam_file
   path intervals from intervals_ch
 
   output:
