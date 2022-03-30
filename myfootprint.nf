@@ -55,6 +55,7 @@ process unstarch {
 
   beforeScript 'module load bedops'
 
+  script:
   """
   unstarch $hotspots > intervals.bed
   """
@@ -63,6 +64,9 @@ process unstarch {
 process learn_dm {
 	label "learn_dm"
   publishDir "./"
+
+  memory = '8 GB'
+  cpus = 8
 
   input:
   file genome from genome
@@ -73,6 +77,7 @@ process learn_dm {
   output:
   file 'dm.json' into models_ch1, models_ch2
 
+  script:
   """
   ln -s  $bam_index ./
   ftd learn_dm \
@@ -80,6 +85,7 @@ process learn_dm {
     intervals.bed \
     $bam \
     $genome \
+    --n_threads 8 \
     > dm.json
   """
 }
@@ -94,6 +100,7 @@ process plot_dm {
   output:
   file 'dm.pdf'
 
+  script:
   """
   ftd plot_dm dm.json --histograms 5,50,100 >dm.pdf
   """
@@ -101,8 +108,12 @@ process plot_dm {
 
 
 process detect_dm {
+
    label "detect_dm"
    publishDir "./"
+
+  memory = '8 GB'
+  cpus = 8
 
    input:
    file bias from bias
@@ -112,8 +123,10 @@ process detect_dm {
    file genome from genome
 
    output:
-   set file('out*bed'), file('out.bedgraph') into footprints_ch
+   file('out*bed')
+   file('out.bedgraph') into footprints_ch
 
+   script:
    """
    ln -s  $bam_index ./
    ftd detect \
@@ -121,12 +134,40 @@ process detect_dm {
    --dispersion_model_file dm.json \
    intervals.bed \
    $bam \
+   --n_threads 8 \
    $genome 
    """
 }
 
-Channel.from(footprints_ch)
-.view()
+
+thresholds_ch = Channel.of(0.1, 0.05, 0.01, 0.001, 0.0001)
+retrieve_params_ch = footprints_ch.combine(thresholds_ch)
+
+
+process retrieve_dm { 
+  label "retrieve_dm"
+  publishDir "./"
+
+
+  input:
+  set file('out.bedgraph'), val(threshold) from retrieve_params_ch
+  //val threshold from thresholds_ch
+
+  output:
+  file "interval.all.fps.${threshold}.bed"
+
+  beforeScript 'module load bedops'
+
+  script:
+  """
+  cat out.bedgraph \
+  | awk -v OFS="\t" -v cutoff=${threshold} '\$8 <= cutoff { print \$1, \$2-3, \$3+3; }' \
+  |  bedops -m - \
+  > interval.all.fps.${threshold}.bed
+ """
+ }
+
+
 
 
 
