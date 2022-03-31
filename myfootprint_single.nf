@@ -4,8 +4,6 @@
 //PARAMS
 
 
-
-
 params.library = "LN2497"
 params.aggregation = "4169"
 params.genome  = "GRCh38"

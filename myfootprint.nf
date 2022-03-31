@@ -3,8 +3,22 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //PARAMS
 
-params.library = "LN2497"
-params.aggregation = "4169"
+params.metadata = "/home/jhutchinson/projects/encode4plus/footprinting_nf/test_metadata.csv"
+
+Channel
+  .fromPath(params.metadata)
+  .splitCsv(header:true)
+  .map{row ->file(row.all_alignments_bam)}
+  .map{bam -> file("${all_alignments_bam.getParent()}/filtered.bam")}
+  .set {metadata_ch}
+
+ 
+
+
+// TODO
+// revamp processes to pull from metadata_ch
+
+
 params.genome  = "GRCh38"
 params.genome_sub = "no_alts"
 params.bias_file = "/home/jhutchinson/projects/encode4plus/footprinting_nf/vierstra_et_al.6mer-model.txt"
@@ -14,9 +28,11 @@ params.bias_file = "/home/jhutchinson/projects/encode4plus/footprinting_nf/viers
 //FILE HANDLERS
 genome = file("/net/seq/data/genomes/human/${params.genome}/noalts/${params.genome}_${params.genome_sub}.fa")
 genome_index = file("${genome}.fai")
-hotspots = file("/net/seq/data/aggregations/${params.library}/aggregation-${params.aggregation}/peaks_v2_1_1/${params.library}.GRCh38_no_alts.uniques.sorted.hotspots.fdr0.05.starch")
-bam = file("/net/seq/data/aggregations/${params.library}/aggregation-${params.aggregation}/${params.library}.${params.genome}_${params.genome_sub}.sorted.bam")
-bam_index = file("${bam}.bai")
+
+
+//hotspots = file("/net/seq/data/aggregations/${params.library}/aggregation-${params.aggregation}/peaks_v2_1_1/${params.library}.GRCh38_no_alts.uniques.sorted.hotspots.fdr0.05.starch")
+//bam = file("/net/seq/data/aggregations/${params.library}/aggregation-${params.aggregation}/${params.library}.${params.genome}_${params.genome_sub}.sorted.bam")
+//bam_index = file("${bam}.bai")
 bias = file(params.bias_file)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -166,6 +182,7 @@ process retrieve_dm {
   > interval.all.fps.${threshold}.bed
  """
  }
+ 
 
 
 
