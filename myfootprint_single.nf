@@ -35,6 +35,10 @@ log.info """\
          """.stripIndent()
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//publishing directories
+outputDir = "./${params.library}/${params.aggregation}"
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///SETUP CHANNELS
 intervals_ch = Channel.create()
 models_ch = Channel.create()
@@ -46,7 +50,7 @@ footprints_ch = Channel.create()
 
 process unstarch {
   label "unstarch"
-  publishDir "./"
+  publishDir outputDir, mode: "copy", overwrite: true
 
   input: 
   file hotspots from hotspots
@@ -64,7 +68,7 @@ process unstarch {
 
 process learn_dm {
 	label "learn_dm"
-  publishDir "./"
+  publishDir outputDir, mode: "copy", overwrite: true
 
   memory = '8 GB'
   cpus = 8
@@ -93,7 +97,7 @@ process learn_dm {
 
 process plot_dm {
   label "plot_dm"
-  publishDir "./"
+  publishDir outputDir, mode: "copy", overwrite: true
 
   input:
   file 'dm.json' from models_ch1
@@ -111,7 +115,7 @@ process plot_dm {
 process detect_dm {
 
    label "detect_dm"
-   publishDir "./"
+  publishDir outputDir, mode: "copy", overwrite: true
 
   memory = '8 GB'
   cpus = 8
@@ -147,7 +151,7 @@ retrieve_params_ch = footprints_ch.combine(thresholds_ch)
 
 process retrieve_dm { 
   label "retrieve_dm"
-  publishDir "./"
+  publishDir outputDir, mode: "copy", overwrite: true
 
 
   input:
