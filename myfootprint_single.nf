@@ -114,7 +114,7 @@ process plot_dm {
 
 process detect_dm {
 
-   label "detect_dm"
+  label "detect_dm"
   publishDir outputDir, mode: "copy", overwrite: true
 
   memory = '8 GB'
