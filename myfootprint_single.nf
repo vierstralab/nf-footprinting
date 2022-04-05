@@ -70,6 +70,8 @@ process learn_dm {
 	label "learn_dm"
   publishDir outputDir, mode: "copy", overwrite: true
 
+  conda '/home/jhutchinson/anaconda3/envs/footprint-tools'
+
   memory = '8 GB'
   cpus = 8
 
@@ -99,6 +101,8 @@ process plot_dm {
   label "plot_dm"
   publishDir outputDir, mode: "copy", overwrite: true
 
+  conda '/home/jhutchinson/anaconda3/envs/footprint-tools'
+
   input:
   file 'dm.json' from models_ch1
 
@@ -117,6 +121,8 @@ process detect_dm {
   label "detect_dm"
   publishDir outputDir, mode: "copy", overwrite: true
 
+  conda '/home/jhutchinson/anaconda3/envs/footprint-tools'
+
   memory = '8 GB'
   cpus = 8
 
@@ -129,7 +135,7 @@ process detect_dm {
 
    output:
    file('out*bed')
-   file('out.bedgraph') into footprints_ch
+   file('out.bedgraph') into footprints_ch1, footprints_ch2
 
    script:
    """
@@ -146,17 +152,17 @@ process detect_dm {
 
 
 thresholds_ch = Channel.of(0.1, 0.05, 0.01, 0.001, 0.0001)
-retrieve_params_ch = footprints_ch.combine(thresholds_ch)
+retrieve_params_ch = footprints_ch1.combine(thresholds_ch)
 
 
 process retrieve_dm { 
   label "retrieve_dm"
   publishDir outputDir, mode: "copy", overwrite: true
 
+  conda '/home/jhutchinson/anaconda3/envs/footprint-tools'
 
   input:
   set file('out.bedgraph'), val(threshold) from retrieve_params_ch
-  //val threshold from thresholds_ch
 
   output:
   file "interval.all.fps.${threshold}.bed"
@@ -174,7 +180,28 @@ process retrieve_dm {
 
 
 
+process learn_beta {
+  label"learn_beta"
+  publishDir outputDir, mode: "copy", overwrite: true
 
+  conda '/home/jhutchinson/anaconda3/envs/footprint-tools'
+
+  input:
+  file 'out.bedgraph' from footprints_ch2
+
+  output:
+  file  'beta.txt'
+
+  script:
+  """
+  ftd learn_beta \
+  --fdr_cutoff 0.05 \
+  --exp_cutoff 10 \
+  out.bedgraph
+  """
+
+
+}
 
 
 
