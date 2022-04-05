@@ -179,7 +179,7 @@ process retrieve_dm {
  }
 
 
-
+//TODO strip header from bedgraph?
 process learn_beta {
   label"learn_beta"
   publishDir outputDir, mode: "copy", overwrite: true
