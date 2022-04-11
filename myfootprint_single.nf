@@ -70,7 +70,7 @@ process learn_dm {
 	label "learn_dm"
   publishDir outputDir, mode: "copy", overwrite: true
 
-  conda '/home/jhutchinson/anaconda3/envs/footprint-tools'
+  //conda '/home/jhutchinson/anaconda3/envs/footprint-tools'
 
   memory = '8 GB'
   cpus = 8
@@ -101,7 +101,7 @@ process plot_dm {
   label "plot_dm"
   publishDir outputDir, mode: "copy", overwrite: true
 
-  conda '/home/jhutchinson/anaconda3/envs/footprint-tools'
+ // conda '/home/jhutchinson/anaconda3/envs/footprint-tools'
 
   input:
   file 'dm.json' from models_ch1
@@ -121,7 +121,7 @@ process detect_dm {
   label "detect_dm"
   publishDir outputDir, mode: "copy", overwrite: true
 
-  conda '/home/jhutchinson/anaconda3/envs/footprint-tools'
+  //conda '/home/jhutchinson/anaconda3/envs/footprint-tools'
 
   memory = '8 GB'
   cpus = 8
@@ -141,6 +141,7 @@ process detect_dm {
    """
    ln -s  $bam_index ./
    ftd detect \
+   --seed 123456 \
    --bias_model_file $bias \
    --dispersion_model_file dm.json \
    intervals.bed \
@@ -159,7 +160,7 @@ process retrieve_dm {
   label "retrieve_dm"
   publishDir outputDir, mode: "copy", overwrite: true
 
-  conda '/home/jhutchinson/anaconda3/envs/footprint-tools'
+ // conda '/home/jhutchinson/anaconda3/envs/footprint-tools'
 
   input:
   set file('out.bedgraph'), val(threshold) from retrieve_params_ch
@@ -184,7 +185,7 @@ process learn_beta {
   label"learn_beta"
   publishDir outputDir, mode: "copy", overwrite: true
 
-  conda '/home/jhutchinson/anaconda3/envs/footprint-tools'
+ // conda '/home/jhutchinson/anaconda3/envs/footprint-tools'
 
   input:
   file 'out.bedgraph' from footprints_ch2
