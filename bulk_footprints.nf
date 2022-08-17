@@ -1,12 +1,15 @@
 #!/usr/bin/env nextflow
 nextflow.enable.dsl = 2
 
-bias = "$projectDir/${params.bias}"
 outdir = params.outdir
 
+conda_env = "$moduleDir/environment.yml"
+
 process unstarch {
-  label "unstarch ${id}"
+  tag "unstarch ${id}"
   publishDir "${outdir}/AG${id}"
+
+  conda conda_env
 
   input: 
     tuple val(id), val(hotspot_peak)
@@ -22,10 +25,10 @@ process unstarch {
 }
 
 process learn_dm {
-	label "learn_dm ${id}"
+	tag "learn_dm ${id}"
 
   publishDir "${outdir}/AG$id"
-
+  conda conda_env
   memory = '8 GB'
   cpus = 8
 
@@ -39,7 +42,7 @@ process learn_dm {
   name = "dm.${id}.json"
   """
   ftd learn_dm \
-    --bias_model_file ${bias} \
+    --bias_model_file ${params.bias} \
     ${unstarch_file} \
     ${bam_file} \
     ${params.genome} \
@@ -49,8 +52,8 @@ process learn_dm {
 }
 
 process plot_dm {
-  label "plot_dm ${id}"
-
+  tag "plot_dm ${id}"
+  conda conda_env
   publishDir "${outdir}/AG$id"
 
   input:
@@ -67,9 +70,9 @@ process plot_dm {
  }
 
 process detect_dm {
-  label "detect_dm ${id}"
+  tag "detect_dm ${id}"
   publishDir "${outdir}/AG$id"
-
+  conda conda_env
   memory = '8 GB'
   cpus = 8
 
@@ -82,7 +85,7 @@ process detect_dm {
   script:
   """
   ftd detect \
-    --bias_model_file ${bias} \
+    --bias_model_file ${params.bias} \
     --dispersion_model_file ${dispersion_model} \
     ${unstarch_file} \
     ${bam_file} \
@@ -92,8 +95,9 @@ process detect_dm {
 }
 
 process retrieve_dm { 
-  label "retrieve_dm ${id}"
+  tag "retrieve_dm ${id}"
   publishDir "${outdir}/AG$id"
+  conda conda_env
 
   input:
     tuple val(id), path(bedgraph)  
@@ -138,9 +142,9 @@ process retrieve_dm {
 
  workflow {
   metadata_channel = Channel
-    .fromPath(params.metadata)
+    .fromPath(params.samples_file)
     .splitCsv(header:true)
-    .map{row -> tuple(row.id, row.bam_file, row.peak_file)}
+    .map{row -> tuple(row.ag_id, row.bam_file, row.hotspots_file)}
   
   hotspotsCalling(metadata_channel)
  }
