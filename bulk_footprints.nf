@@ -1,7 +1,7 @@
 #!/usr/bin/env nextflow
 nextflow.enable.dsl = 2
 
-bias = "$projectDir/${params.bias}"
+bias = "$moduleDir/${params.bias}"
 outdir = params.outdir
 
 process unstarch {
