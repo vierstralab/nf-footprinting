@@ -5,6 +5,7 @@ outdir = params.outdir
 
 conda_env = "$moduleDir/environment.yml"
 
+
 process unstarch {
   tag "unstarch ${id}"
   publishDir "${outdir}/AG${id}"
