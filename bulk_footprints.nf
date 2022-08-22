@@ -3,14 +3,14 @@ nextflow.enable.dsl = 2
 
 outdir = params.outdir
 
-conda_env = "$moduleDir/environment.yml"
+params.conda = "$moduleDir/environment.yml"
 
 
 process unstarch {
   tag "unstarch ${id}"
   publishDir "${outdir}/AG${id}"
 
-  conda conda_env
+  conda params.conda
 
   input: 
     tuple val(id), val(hotspot_peak)
@@ -29,7 +29,7 @@ process learn_dm {
 	tag "learn_dm ${id}"
 
   publishDir "${outdir}/AG$id"
-  conda conda_env
+  conda params.conda
   memory = '8 GB'
   cpus = 8
 
@@ -46,7 +46,7 @@ process learn_dm {
     --bias_model_file ${params.bias} \
     ${unstarch_file} \
     ${bam_file} \
-    ${params.genome} \
+    ${params.genome_fasta_file} \
     --n_threads ${task.cpus} \
     > ${name}
   """
@@ -54,7 +54,7 @@ process learn_dm {
 
 process plot_dm {
   tag "plot_dm ${id}"
-  conda conda_env
+  conda params.conda
   publishDir "${outdir}/AG$id"
 
   input:
@@ -91,14 +91,14 @@ process detect_dm {
     ${unstarch_file} \
     ${bam_file} \
     --n_threads ${task.cpus} \
-    ${params.genome}
+    ${params.genome_fasta_file}
   """
 }
 
 process retrieve_dm { 
   tag "retrieve_dm ${id}"
   publishDir "${outdir}/AG$id"
-  conda conda_env
+  conda params.conda
 
   input:
     tuple val(id), path(bedgraph)  
