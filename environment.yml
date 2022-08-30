@@ -11,7 +11,6 @@ dependencies:
   - plink2
   - bwa
   - bedtools
-  - nextflow
   - pyfaidx
   - pytables
   - samtools
