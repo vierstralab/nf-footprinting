@@ -105,7 +105,7 @@ process retrieve_dm {
     each threshold
 
   output:
-    tuple val(id), path(name)
+    tuple val(id), val(threshold), path(name)
 
   script:
   name = "interval.all.fps.${threshold}.${id}.bed"
