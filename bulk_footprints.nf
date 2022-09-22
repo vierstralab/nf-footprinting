@@ -7,7 +7,7 @@ params.conda = "$moduleDir/environment.yml"
 
 
 process unstarch {
-  tag "unstarch ${id}"
+  tag "${id}"
   publishDir "${outdir}/AG${id}"
 
   conda params.conda
@@ -26,7 +26,7 @@ process unstarch {
 }
 
 process learn_dm {
-	tag "learn_dm ${id}"
+	tag "${id}"
 
   publishDir "${outdir}/AG$id"
   conda params.conda
@@ -53,7 +53,7 @@ process learn_dm {
 }
 
 process plot_dm {
-  tag "plot_dm ${id}"
+  tag "${id}"
   conda params.conda
   publishDir "${outdir}/AG$id"
 
@@ -71,9 +71,9 @@ process plot_dm {
  }
 
 process detect_dm {
-  tag "detect_dm ${id}"
+  tag "${id}"
   publishDir "${outdir}/AG$id"
-  conda conda_env
+  conda params.conda
   memory = '8 GB'
   cpus = 8
 
@@ -96,7 +96,7 @@ process detect_dm {
 }
 
 process retrieve_dm { 
-  tag "retrieve_dm ${id}"
+  tag "${id}"
   publishDir "${outdir}/AG$id"
   conda params.conda
 
@@ -117,7 +117,7 @@ process retrieve_dm {
  """
  }
  
- workflow hotspotsCalling {
+ workflow footprintsCalling {
   take:
     metadata_channel
   main:
@@ -147,7 +147,7 @@ process retrieve_dm {
     .splitCsv(header:true)
     .map{row -> tuple(row.ag_id, row.bam_file, row.hotspots_file)}
   
-  hotspotsCalling(metadata_channel)
+  footprintsCalling(metadata_channel)
  }
 
 
