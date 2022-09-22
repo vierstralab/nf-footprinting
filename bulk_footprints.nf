@@ -102,7 +102,7 @@ process retrieve_dm {
 
   input:
     tuple val(id), path(bedgraph)  
-    each val(threshold)
+    each threshold
 
   output:
     tuple val(id), path(name)
