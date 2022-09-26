@@ -101,8 +101,7 @@ process retrieve_dm {
   conda params.conda
 
   input:
-    tuple val(id), path(bedgraph)  
-    each threshold
+    tuple val(id), path(bedgraph), val(threshold)
 
   output:
     tuple val(id), val(threshold), path(name)
@@ -133,8 +132,8 @@ process retrieve_dm {
 
     bedgraphs = detect_dm(bams_channel.join(dm_models))
 
-    thresholds = Channel.of(0.1, 0.05, 0.01, 0.001, 0.0001)
-    retrieve_dm(bedgraphs, thresholds)
+    thresholds = Channel.from(0.1, 0.05, 0.01, 0.001, 0.0001)
+    retrieve_dm(bedgraphs.combine(thresholds))
   
   emit:
     retrieve_dm.out
