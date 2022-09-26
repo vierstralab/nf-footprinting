@@ -133,7 +133,7 @@ process retrieve_dm {
 
     bedgraphs = detect_dm(bams_channel.join(dm_models))
 
-    thresholds = Channel.from(0.1, 0.05, 0.01, 0.001, 0.0001)
+    thresholds = Channel.of(0.1, 0.05, 0.01, 0.001, 0.0001)
     retrieve_dm(bedgraphs.combine(thresholds))
   
   emit:
