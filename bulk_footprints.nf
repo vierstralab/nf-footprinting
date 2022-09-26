@@ -8,7 +8,7 @@ outdir = params.outdir
 
 process unstarch {
   tag "${id}"
-  publishDir "${outdir}/AG${id}"
+  publishDir "${outdir}/AG${id}", mode: 'copy'
 
   conda params.conda
 
@@ -28,7 +28,7 @@ process unstarch {
 process learn_dm {
 	tag "${id}"
 
-  publishDir "${outdir}/AG$id"
+  publishDir "${outdir}/AG$id", mode: 'copy'
   conda params.conda
   memory = '8 GB'
   cpus = 8
@@ -56,7 +56,7 @@ process learn_dm {
 process plot_dm {
   tag "${id}"
   conda params.conda
-  publishDir "${outdir}/AG$id"
+  publishDir "${outdir}/AG$id", mode: 'copy'
 
   input:
     tuple val(id), path(dispersion_model)
@@ -73,7 +73,7 @@ process plot_dm {
 
 process detect_dm {
   tag "${id}"
-  publishDir "${outdir}/AG$id"
+  publishDir "${outdir}/AG$id", mode: 'copy'
   conda params.conda
   memory = '8 GB'
   cpus = 8
@@ -98,7 +98,7 @@ process detect_dm {
 
 process retrieve_dm { 
   tag "${id}"
-  publishDir "${outdir}/AG$id"
+  publishDir "${outdir}/AG$id", mode: 'copy'
   conda params.conda
 
   input:
