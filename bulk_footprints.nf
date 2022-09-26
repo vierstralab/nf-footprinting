@@ -3,7 +3,7 @@ nextflow.enable.dsl = 2
 
 outdir = params.outdir
 
-params.conda = "$moduleDir/environment.yml"
+//  params.conda = "$moduleDir/environment.yml"
 
 
 process unstarch {
@@ -48,7 +48,8 @@ process learn_dm {
     ${bam_file} \
     ${params.genome_fasta_file} \
     --n_threads ${task.cpus} \
-    > ${name}
+    > dm.json
+    mv dm.json ${name}
   """
 }
 
@@ -143,9 +144,10 @@ process retrieve_dm {
  workflow {
   metadata_channel = Channel
     .fromPath(params.samples_file)
-    .splitCsv(header:true)
-    .map{row -> tuple(row.ag_id, row.bam_file, row.hotspots_file)}
-  
+    .splitCsv(header:false)
+    .view { row -> "${row[0]} - ${row[1]} - ${row[2]}" }
+    //.map{row -> tuple(row.ag_id, row.bam_file, row.hotspots_file)}
+
   footprintsCalling(metadata_channel)
  }
 
