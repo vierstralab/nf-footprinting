@@ -133,7 +133,7 @@ process retrieve_dm {
 
     bedgraphs = detect_dm(bams_channel.join(dm_models))
 
-    thresholds = Channel.of(0.1, 0.05, 0.01, 0.001, 0.0001)
+    thresholds = Channel.from(0.1, 0.05, 0.01, 0.001, 0.0001)
     retrieve_dm(bedgraphs.combine(thresholds))
   
   emit:
@@ -145,7 +145,7 @@ process retrieve_dm {
   metadata_channel = Channel
     .fromPath(params.samples_file)
     .splitCsv(header:false)
-    .view { row -> "${row[0]} - ${row[1]} - ${row[2]}" }
+//    .view { row -> "${row[0]} - ${row[1]} - ${row[2]}" }
     //.map{row -> tuple(row.ag_id, row.bam_file, row.hotspots_file)}
 
   footprintsCalling(metadata_channel)
