@@ -9,7 +9,6 @@ outdir = params.outdir
 process unstarch {
   tag "${id}"
   publishDir "${outdir}/AG${id}", mode: 'copy'
-
   conda params.conda
 
   input: 
@@ -27,7 +26,6 @@ process unstarch {
 
 process learn_dm {
 	tag "${id}"
-
   publishDir "${outdir}/AG$id", mode: 'copy'
   conda params.conda
   memory = '8 GB'
@@ -55,8 +53,8 @@ process learn_dm {
 
 process plot_dm {
   tag "${id}"
-  conda params.conda
   publishDir "${outdir}/AG$id", mode: 'copy'
+  conda params.conda
 
   input:
     tuple val(id), path(dispersion_model)
@@ -120,6 +118,7 @@ process retrieve_dm {
  workflow footprintsCalling {
   take:
     metadata_channel
+  
   main:
     peaks_channel = metadata_channel.map(row -> tuple(row[0], row[2]))
     unstarch_channel = unstarch(peaks_channel)
@@ -138,14 +137,13 @@ process retrieve_dm {
   
   emit:
     retrieve_dm.out
-
  }
 
  workflow {
   metadata_channel = Channel
     .fromPath(params.samples_file)
     .splitCsv(header:false)
-//    .view { row -> "${row[0]} - ${row[1]} - ${row[2]}" }
+    //.view { row -> "${row[0]} - ${row[1]} - ${row[2]}" }
     //.map{row -> tuple(row.ag_id, row.bam_file, row.hotspots_file)}
 
   footprintsCalling(metadata_channel)
