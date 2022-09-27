@@ -8,7 +8,7 @@ outdir = params.outdir
 
 process unstarch {
   tag "${id}"
-  publishDir "${outdir}/AG${id}", mode: 'copy'
+  publishDir "${outdir}/AG${id}", mode: 'move'
   conda params.conda
 
   input: 
@@ -26,7 +26,7 @@ process unstarch {
 
 process learn_dm {
 	tag "${id}"
-  publishDir "${outdir}/AG$id", mode: 'copy'
+  publishDir "${outdir}/AG$id", mode: 'move'
   conda params.conda
   memory = '8 GB'
   cpus = 8
@@ -53,7 +53,7 @@ process learn_dm {
 
 process plot_dm {
   tag "${id}"
-  publishDir "${outdir}/AG$id", mode: 'copy'
+  publishDir "${outdir}/AG$id", mode: 'move'
   conda params.conda
 
   input:
@@ -71,7 +71,7 @@ process plot_dm {
 
 process detect_dm {
   tag "${id}"
-  publishDir "${outdir}/AG$id", mode: 'copy'
+  publishDir "${outdir}/AG$id", mode: 'move'
   conda params.conda
   memory = '8 GB'
   cpus = 8
@@ -96,7 +96,7 @@ process detect_dm {
 
 process retrieve_dm { 
   tag "${id}"
-  publishDir "${outdir}/AG$id", mode: 'copy'
+  publishDir "${outdir}/AG$id", mode: 'move'
   conda params.conda
 
   input:
