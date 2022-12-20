@@ -25,7 +25,7 @@ process unstarch {
 }
 
 process learn_dm {
-	tag "${id}"
+  tag "${id}"
   publishDir "${outdir}/AG$id", mode: 'copy'
   conda params.conda
   memory = '8 GB'
@@ -116,6 +116,27 @@ process retrieve_dm {
  """
  }
  
+ process learn_bayes {
+    tag "${id}"
+    publishDir "${outdir}/AG$id", mode: 'copy'
+    conda params.conda
+
+    input:
+        tuple val(id), path(bedgraph)
+
+    output:
+        tuple val(id), path('beta.txt')
+
+    script:
+    """
+    ftd learn_beta \
+    --fdr_cutoff 0.05 \
+    --exp_cutoff 10 \
+    ${bedgraph}
+    """
+}
+
+
  workflow footprintsCalling {
   take:
     metadata_channel
@@ -135,9 +156,11 @@ process retrieve_dm {
 
     thresholds = Channel.from(0.1, 0.05, 0.01, 0.001, 0.0001)
     retrieve_dm(bedgraphs.combine(thresholds))
-  
+    
+    learn_bayes(bedgraphs)
+
   emit:
-    retrieve_dm.out
+    learn_bayes.out
  }
 
  workflow {
