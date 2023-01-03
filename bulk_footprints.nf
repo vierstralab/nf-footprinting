@@ -172,11 +172,3 @@ process retrieve_dm {
 
   footprintsCalling(metadata_channel)
  }
-
-
-
-
-
-
-
-
