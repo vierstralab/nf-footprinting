@@ -14,5 +14,6 @@ dependencies:
   - samtools=1.15
   - pip
   - pip:
+    - Cython
     - footprint-tools
 prefix: /home/sabramov/miniconda3/envs/footprints-calling
