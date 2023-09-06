@@ -14,4 +14,6 @@ dependencies:
   - pyfaidx
   - pytables
   - samtools=1.15
-prefix: /home/sabramov/miniconda3/envs/babachi
+  - pip:
+    - footprint-tools
+prefix: /home/sabramov/miniconda3/envs/footprints-calling
