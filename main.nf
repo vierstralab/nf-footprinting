@@ -176,6 +176,5 @@ process retrieve_dm {
              file(row.filtered_alignments_bam), 
              file(row?.bam_index ?: "${row.filtered_alignments_bam}.crai"),
              file(row.hotspot_peaks_point1per)))
-        | take(5)
         | footprintsCalling
  }
