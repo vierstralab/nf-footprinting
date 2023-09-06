@@ -29,7 +29,7 @@ process learn_dm {
     label "high_cpu"
 
     input:
-        tuple val(id), path(bam_file), path(unstarch_file)
+        tuple val(id), path(bam_file), path(bam_index), path(unstarch_file)
     
     output:
         tuple val(id), path(name)
@@ -66,7 +66,7 @@ process plot_dm {
     ftd plot_dm ${dispersion_model} --histograms 5,50,100 > dm.pdf
     mv dm.pdf ${name}
     """
-    }
+}
 
 process detect_dm {
     tag "${id}"
@@ -75,7 +75,7 @@ process detect_dm {
     label "high_cpu"
 
     input:
-        tuple val(id), path(dispersion_model), path(bam_file), path(unstarch_file)
+        tuple val(id), path(dispersion_model), path(bam_file), path(bam_index), path(unstarch_file)
     
     output:
         tuple val(id), path(name)
@@ -148,11 +148,11 @@ process retrieve_dm {
         thresholds = Channel.from(0.1, 0.05, 0.01, 0.001, 0.0001)
 
         unstarch_channel = metadata_channel
-            | map(it -> tuple(it[0], it[2]))
+            | map(it -> tuple(it[0], it[3]))
             | unstarch
 
         bams_channel = metadata_channel
-            | map(it -> tuple(it[0], it[1]))
+            | map(it -> tuple(it[0], it[1], it[2]))
             | join(unstarch_channel)
 
         out = bams_channel
@@ -172,7 +172,10 @@ process retrieve_dm {
  workflow {
     Channel.fromPath(params.samples_file)
         | splitCsv(header:true, sep:'\t')
-        | map(row -> tuple(row.ag_id, file(row.filtered_alignments_bam), file(row.hotspot_peaks_point1per)))
+        | map(row -> tuple(row.ag_id,
+             file(row.filtered_alignments_bam), 
+             file(row?.bam_index ?: "${row.filtered_alignments_bam}.crai"),
+             file(row.hotspot_peaks_point1per)))
         | take(5)
         | footprintsCalling
  }

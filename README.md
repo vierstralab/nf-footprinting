@@ -26,6 +26,7 @@ Following parameters should be present in ```params.config```. Each option can b
 - ```samples_file``` - tab-delimited file with metadata for samples. The file must contain a header and the following columns (other columns are permitted and ignored)
     - ```ag_id``` - unique identifier of the sample.
     - `filtered_alignments_bam` - path to a bam/cram file
+    - `bam_index` - index to the bam/cram file, if not provided look for index at `${filtered_alignments_bam}.crai`
     - `hotspot_peaks_point1per` - path to peaks called with hotspot2
 
 - `genome_fasta_file` - path to genome fasta
