@@ -24,7 +24,7 @@ Following parameters should be present in ```params.config```. Each option can b
 - ```outdir``` - directory to save results into. May be a relative path.
 - ```conda``` - path to installed conda (from environment.yml)
 - ```samples_file``` - tab-delimited file with metadata for samples. The file must contain a header and the following columns (other columns are permitted and ignored)
-    - ```ag_id``` - unique identifier of the sample.<br><br>
+    - ```ag_id``` - unique identifier of the sample.
     - `filtered_alignments_bam` - path to a bam/cram file
     - `hotspot_peaks_point1per` - path to peaks called with hotspot2
 
