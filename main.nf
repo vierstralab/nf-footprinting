@@ -161,7 +161,8 @@ process retrieve_dm {
             | detect_dm
             | combine(thresholds)
             | retrieve_dm
-            | learn_bayes
+        
+        learn_bayes(detect_dm.out)
         
         plot_dm(learn_dm.out)
 
