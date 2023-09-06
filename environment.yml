@@ -1,4 +1,4 @@
-name: babachi
+name: footprints-calling
 channels:
   - conda-forge
   - bioconda
@@ -13,7 +13,7 @@ dependencies:
   - pyfaidx
   - samtools=1.15
   - pip
+  - cython
   - pip:
-    - Cython
     - footprint-tools
 prefix: /home/sabramov/miniconda3/envs/footprints-calling
