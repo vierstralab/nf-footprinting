@@ -6,7 +6,6 @@ params.conda = "$moduleDir/environment.yml"
 
 process unstarch {
     tag "${id}"
-    publishDir "${params.outdir}/${id}"
     conda params.conda
 
     input: 
