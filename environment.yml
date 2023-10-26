@@ -1,0 +1,19 @@
+name: footprints-calling
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.8
+  - pysam
+  - bedops
+  - bcftools=1.15
+  - plink2
+  - bedtools
+  - pyfaidx
+  - samtools=1.15
+  - pip
+  - cython
+  - pip:
+    - footprint-tools
+prefix: /home/sabramov/miniconda3/envs/footprints-calling
