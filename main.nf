@@ -138,6 +138,30 @@ process retrieve_dm {
     """
 }
 
+process compress_and_tabix {
+    tag "${id}"
+    publishDir "${params.outdir}/${id}"
+    conda params.conda
+    scratch true
+    errorStrategy { task.exitStatus == 1 ? 'ignore' : 'terminate' }
+
+    input:
+        tuple val(id), path(bedgraph)
+
+    output:
+        tuple val(id), path(name), path(tabix_name)
+
+    script:
+    name = "${id}.out.bedgraph.gz"
+    tabix_name = "${name}.tbi"
+    """
+    sort-bed ${bedgraph} \
+        | bgzip -c \
+        > ${name}
+
+    tabix -0 -p bed ${name}
+    """
+}
 
  workflow footprintsCalling {
     take:
@@ -161,7 +185,8 @@ process retrieve_dm {
             | combine(thresholds)
             | retrieve_dm
         
-        learn_bayes(detect_dm.out)
+        detect_dm.out
+            | (learn_bayes & compress_and_tabix)
         
         plot_dm(learn_dm.out)
 
