@@ -143,7 +143,6 @@ process compress_and_tabix {
     publishDir "${params.outdir}/${id}"
     conda params.conda
     scratch true
-    errorStrategy { task.exitStatus == 1 ? 'ignore' : 'terminate' }
 
     input:
         tuple val(id), path(bedgraph)
@@ -202,4 +201,11 @@ process compress_and_tabix {
              file(row?.cram_index ?: "${row.cram_file}.crai"),
              file(row.hotspots_file)))
         | footprintsCalling
+ }
+
+ workflow tmp {
+    Channel.fromPath(params.samples_file)
+        | splitCsv(header:true, sep:'\t')
+        | map(row -> tuple(row.ag_id, file("$launchDir/output/${row.ag_id}/${row.ag_id}.out.bedgraph")))
+        | compress_and_tabix
  }
