@@ -207,5 +207,6 @@ process compress_and_tabix {
     Channel.fromPath(params.samples_file)
         | splitCsv(header:true, sep:'\t')
         | map(row -> tuple(row.ag_id, file("$launchDir/output/${row.ag_id}/${row.ag_id}.out.bedgraph")))
+        | filter { !it[1].exists() }
         | compress_and_tabix
  }
