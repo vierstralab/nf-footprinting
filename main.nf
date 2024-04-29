@@ -206,7 +206,14 @@ process compress_and_tabix {
  workflow tmp {
     Channel.fromPath(params.samples_file)
         | splitCsv(header:true, sep:'\t')
-        | map(row -> tuple(row.ag_id, file("$launchDir/output/${row.ag_id}/${row.ag_id}.out.bedgraph")))
+        | map(row -> tuple(
+            row.ag_id,
+            file("$launchDir/output/${row.ag_id}/${row.ag_id}.out.bedgraph"),
+            file("$launchDir/output/${row.ag_id}/${row.ag_id}.out.bedgraph.gz")
+            )
+        )
         | filter { it[1].exists() }
+        | filter { !it[2].exists() }
+        | map(it -> tuple(it[0], it[1]))
         | compress_and_tabix
  }
