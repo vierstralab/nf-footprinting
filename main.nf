@@ -17,7 +17,7 @@ process unstarch {
     script:
     name = "${id}.intervals.bed"
     """
-    unstarch ${hotspot_peak} > ${name}
+    zcat ${hotspot_peak} | cut -f-3 > ${name}
     """
 }
 
@@ -202,6 +202,7 @@ process compress_and_tabix {
              file(row.hotspots_file)))
         | footprintsCalling
  }
+
 
  workflow tmp {
     Channel.fromPath(params.samples_file)
