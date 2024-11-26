@@ -196,10 +196,12 @@ process compress_and_tabix {
  workflow {
     Channel.fromPath(params.samples_file)
         | splitCsv(header:true, sep:'\t')
-        | map(row -> tuple(row.ag_id,
-             file(row.cram_file), 
-             file(row?.cram_index ?: "${row.cram_file}.crai"),
-             file(row.hotspots_file)))
+        | map(row -> tuple(
+            row.ag_id,
+            file(row.cram_file), 
+            file(row?.cram_index ?: "${row.cram_file}.crai"),
+            file(row.hotspots_file))
+        )
         | footprintsCalling
  }
 
