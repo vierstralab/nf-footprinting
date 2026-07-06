@@ -1,14 +1,14 @@
 #!/usr/bin/env nextflow
 nextflow.enable.dsl = 2
 
-params.conda = "/home/sabramov/miniconda3/envs/pytorch"
+params.conda = "$moduleDir/environment.yml"
 params.footprints_metadata = '/net/seq/data2/projects/ENCODE4Plus/REGULOME/footprints/fp_meta_filtered.tsv'
 params.dhs_index = '/net/seq/data2/projects/ENCODE4Plus/REGULOME/footprints/cons_dhs.tsv'
 
 
 process diff_footprints {
     tag "${dhs_id}"
-    conda params.conda
+    conda "/home/sabramov/miniconda3/envs/pytorch"
     publishDir "${params.outdir}/${dhs_id}"
 
     input: 
