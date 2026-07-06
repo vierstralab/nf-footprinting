@@ -1,0 +1,36 @@
+#!/usr/bin/env nextflow
+nextflow.enable.dsl = 2
+
+params.conda = "/home/sabramov/miniconda3/envs/pytorch"
+params.footprints_metadata = '/net/seq/data2/projects/ENCODE4Plus/REGULOME/footprints/fp_meta_filtered.tsv'
+params.dhs_index = '/net/seq/data2/projects/ENCODE4Plus/REGULOME/footprints/cons_dhs.tsv'
+
+
+process diff_footprints {
+    tag "${dhs_id}"
+    conda params.conda
+
+    input: 
+        val dhs_id
+
+    output:
+        tuple val(dhs_id), path(name)
+
+    script:
+    name = "dhs_id.${dhs_id}.npz"
+    """
+    python3 $moduleDir/bin/extract_fp_data.py \
+        ${dhs_id} \
+        ${params.dhs_index} \
+        ${params.footprints_metadata} \
+        ${name}
+    """
+}
+
+
+workflow {
+    Channel.fromPath(params.dhs_index)
+        | splitCsv(header: true, sep: '\t')
+        | map(it -> it.dhs_id)
+        | diff_footprints
+}
