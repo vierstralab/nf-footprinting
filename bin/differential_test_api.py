@@ -14,6 +14,9 @@ from scipy.special import logsumexp, ndtr, ndtri_exp
 from genome_tools.plotting.modular_plot.api import DataBundle, PlotDataLoader
 from footprint_tools.stats import differential
 from footprint_tools.stats.distributions import invchi2
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
 
 
 __all__ = [
@@ -194,6 +197,175 @@ class DifferentialAnalysis:
 
     def sig2_prior_mass(self, group: str) -> np.ndarray:
         return np.exp(self.log_sig2_prior_mass(group))
+
+    def to_npz(
+        self,
+        path,
+        *,
+        compressed: bool = True,
+        require_sig2_loglik: bool = True,
+        extra: Mapping[str, Any] = None,
+    ) -> Path:
+        """Save results needed for plotting and downstream segmentation."""
+        path = Path(path)
+
+        if path.suffix != ".npz":
+            path = Path(f"{path}.npz")
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        fit = self.fit
+        likelihood = self.likelihood
+        raw_loglik = likelihood.group_loglik_mu_sig2
+
+        if require_sig2_loglik and raw_loglik is None:
+            raise ValueError(
+                "The position × mu × sig2 likelihood was not retained. "
+                "Rerun DifferentialFitLoader with keep_sig2_loglik=True."
+            )
+
+        arrays: dict[str, np.ndarray] = {
+            # File schema
+            "format_version": np.array(1, dtype=np.int16),
+            "group_names": np.asarray(
+                self.group_names,
+                dtype=np.str_,
+            ),
+            "n_position": np.array(
+                fit.statistic.size,
+                dtype=np.int64,
+            ),
+
+            # Parameter grids
+            "mu_x": np.asarray(
+                likelihood.mu_x,
+                dtype=np.float64,
+            ),
+            "sig2_x": np.asarray(
+                likelihood.sig2_x,
+                dtype=np.float64,
+            ),
+
+            # Required input for segmentation:
+            # group × position × mu
+            "group_loglik_mu": np.asarray(
+                likelihood.group_loglik_mu,
+                dtype=np.float64,
+            ),
+
+            # Normalized finite-grid inverse-chi-squared prior masses:
+            # group × sig2
+            "group_log_sig2_prior_mass": np.asarray(
+                likelihood.group_log_sig2_prior_mass,
+                dtype=np.float64,
+            ),
+
+            # Pointwise differential results
+            "lrt_statistic": np.asarray(
+                fit.statistic,
+                dtype=np.float64,
+            ),
+            "lrt_df": np.array(
+                fit.df,
+                dtype=np.int16,
+            ),
+            "lrt_log_pvalue": np.asarray(
+                fit.log_pvalue,
+                dtype=np.float64,
+            ),
+            "common_mu": np.asarray(
+                fit.common_mu,
+                dtype=np.float64,
+            ),
+            "group_mu": np.asarray(
+                fit.group_mu,
+                dtype=np.float64,
+            ),
+            "group_conditional_sig2": np.asarray(
+                fit.group_conditional_sig2,
+                dtype=np.float64,
+            ),
+        }
+
+        # Raw likelihood before applying the sigma² prior:
+        # group × position × mu × sig2
+        if raw_loglik is not None:
+            arrays["group_loglik_mu_sig2"] = np.asarray(
+                raw_loglik,
+                dtype=np.float64,
+            )
+
+        if self.windowed is not None:
+            arrays.update({
+                "window_radius": np.array(
+                    self.windowed.radius,
+                    dtype=np.int32,
+                ),
+                "window_score": np.asarray(
+                    self.windowed.score,
+                    dtype=np.float64,
+                ),
+                "window_nominal_log_pvalue": np.asarray(
+                    self.windowed.nominal_log_pvalue,
+                    dtype=np.float64,
+                ),
+            })
+
+        if self.diagnostics is not None:
+            arrays.update({
+                "theta_x": np.asarray(
+                    self.diagnostics.theta_x,
+                    dtype=np.float64,
+                ),
+                "group_invchi2_params": np.asarray(
+                    self.diagnostics.group_invchi2_params,
+                    dtype=np.float64,
+                ),
+                "theta_coverage": np.array(
+                    self.diagnostics.theta_coverage,
+                    dtype=np.float64,
+                ),
+                "mu_boundary_fraction": np.array(
+                    self.diagnostics.mu_boundary_fraction,
+                    dtype=np.float64,
+                ),
+            })
+
+        if extra is not None:
+            for key, value in extra.items():
+                if not isinstance(key, str) or not key:
+                    raise ValueError(
+                        "Extra metadata keys must be nonempty strings"
+                    )
+
+                if key in arrays:
+                    raise KeyError(
+                        f"Extra metadata key {key!r} conflicts with "
+                        "a reserved result key"
+                    )
+
+                array = np.asarray(value)
+
+                if array.dtype == object:
+                    flat = array.ravel()
+
+                    if all(
+                        isinstance(item, (str, np.str_))
+                        for item in flat
+                    ):
+                        array = array.astype(np.str_)
+                    else:
+                        raise TypeError(
+                            f"Extra value {key!r} has object dtype. "
+                            "Pass a numeric, boolean, or string array instead."
+                        )
+
+                arrays[key] = array
+
+        save = np.savez_compressed if compressed else np.savez
+        save(path, **arrays)
+
+        return path
 
 
 @dataclass(frozen=True, slots=True)
