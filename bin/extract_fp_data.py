@@ -46,7 +46,7 @@ if __name__ == "__main__":
         sample_data
     )
 
-    to_npz(data=data, path=sys.argv[4])
+    data.to_npz(data=data.differential, path=sys.argv[4])
     # dhs_region = GenomicInterval("chr15", 74995300, 74995600)
 
 
