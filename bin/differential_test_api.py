@@ -14,9 +14,9 @@ from scipy.special import logsumexp, ndtr, ndtri_exp
 from genome_tools.plotting.modular_plot.api import DataBundle, PlotDataLoader
 from footprint_tools.stats import differential
 from footprint_tools.stats.distributions import invchi2
-from collections.abc import Mapping
+
 from pathlib import Path
-from typing import Any
+
 
 
 __all__ = [
@@ -38,6 +38,8 @@ class DifferentialModelConfig:
     theta_x: np.ndarray | None = None
     mu_x: np.ndarray | None = None
     sig2_x: np.ndarray | None = None
+    mu_grid_params: tuple[float, float, int] = (-6.0, 6.0, 481), 
+    sig2_grid_params: tuple[float, float, int] = (1e-3, 10.0, 181),
     theta_step: float = 0.1
     theta_tail_sd: float = 5.0
     min_theta_mass: float = 0.999
@@ -368,6 +370,227 @@ class DifferentialAnalysis:
         return path
 
 
+
+    @classmethod
+    def from_npz(
+        cls,
+        path: str | Path,
+    ) -> "DifferentialAnalysis":
+        """Reconstruct a DifferentialAnalysis object from an NPZ file."""
+        path = Path(path)
+
+        with np.load(path, allow_pickle=False) as saved:
+            required = {
+                "group_names",
+                "mu_x",
+                "sig2_x",
+                "group_loglik_mu",
+                "group_log_sig2_prior_mass",
+                "lrt_statistic",
+                "lrt_df",
+                "common_mu",
+                "group_mu",
+                "group_conditional_sig2",
+            }
+
+            missing = required.difference(saved.files)
+            if missing:
+                raise ValueError(
+                    f"NPZ file is missing required fields: "
+                    f"{sorted(missing)}"
+                )
+
+            if "format_version" in saved:
+                format_version = int(saved["format_version"])
+
+                if format_version != 1:
+                    raise ValueError(
+                        f"Unsupported NPZ format version: "
+                        f"{format_version}"
+                    )
+
+            group_names = tuple(
+                str(value)
+                for value in saved["group_names"].tolist()
+            )
+
+            fit = DifferentialFit(
+                statistic=saved["lrt_statistic"].copy(),
+                df=int(saved["lrt_df"]),
+                common_mu=saved["common_mu"].copy(),
+                group_mu=saved["group_mu"].copy(),
+                group_conditional_sig2=saved[
+                    "group_conditional_sig2"
+                ].copy(),
+            )
+
+            likelihood = DifferentialLikelihood(
+                mu_x=saved["mu_x"].copy(),
+                sig2_x=saved["sig2_x"].copy(),
+                group_loglik_mu=saved[
+                    "group_loglik_mu"
+                ].copy(),
+                group_log_sig2_prior_mass=saved[
+                    "group_log_sig2_prior_mass"
+                ].copy(),
+                group_loglik_mu_sig2=(
+                    saved["group_loglik_mu_sig2"].copy()
+                    if "group_loglik_mu_sig2" in saved
+                    else None
+                ),
+            )
+
+            diagnostic_keys = {
+                "theta_x",
+                "group_invchi2_params",
+                "theta_coverage",
+                "mu_boundary_fraction",
+            }
+
+            present_diagnostic_keys = (
+                diagnostic_keys.intersection(saved.files)
+            )
+
+            if (
+                present_diagnostic_keys
+                and present_diagnostic_keys != diagnostic_keys
+            ):
+                missing_diagnostics = (
+                    diagnostic_keys - present_diagnostic_keys
+                )
+
+                raise ValueError(
+                    "NPZ file contains incomplete diagnostics; "
+                    f"missing: {sorted(missing_diagnostics)}"
+                )
+
+            diagnostics = (
+                DifferentialDiagnostics(
+                    theta_x=saved["theta_x"].copy(),
+                    group_invchi2_params=saved[
+                        "group_invchi2_params"
+                    ].copy(),
+                    theta_coverage=float(
+                        saved["theta_coverage"]
+                    ),
+                    mu_boundary_fraction=float(
+                        saved["mu_boundary_fraction"]
+                    ),
+                )
+                if present_diagnostic_keys
+                else None
+            )
+
+            window_keys = {
+                "window_radius",
+                "window_score",
+            }
+
+            present_window_keys = window_keys.intersection(
+                saved.files
+            )
+
+            if (
+                present_window_keys
+                and present_window_keys != window_keys
+            ):
+                missing_window = (
+                    window_keys - present_window_keys
+                )
+
+                raise ValueError(
+                    "NPZ file contains incomplete window results; "
+                    f"missing: {sorted(missing_window)}"
+                )
+
+            windowed = (
+                WindowedScore(
+                    radius=int(saved["window_radius"]),
+                    score=saved["window_score"].copy(),
+                )
+                if present_window_keys
+                else None
+            )
+
+        analysis = cls(
+            group_names=group_names,
+            fit=fit,
+            likelihood=likelihood,
+            diagnostics=diagnostics,
+            windowed=windowed,
+        )
+
+        analysis._validate_loaded_shapes()
+
+        return analysis
+
+    def _validate_loaded_shapes(self) -> None:
+        """Check consistency of arrays reconstructed from disk."""
+        n_group = len(self.group_names)
+        n_position = self.fit.statistic.size
+        n_mu = self.likelihood.mu_x.size
+        n_sig2 = self.likelihood.sig2_x.size
+
+        expected_shapes = {
+            "fit.common_mu": (
+                self.fit.common_mu.shape,
+                (n_position,),
+            ),
+            "fit.group_mu": (
+                self.fit.group_mu.shape,
+                (n_group, n_position),
+            ),
+            "fit.group_conditional_sig2": (
+                self.fit.group_conditional_sig2.shape,
+                (n_group, n_position),
+            ),
+            "likelihood.group_loglik_mu": (
+                self.likelihood.group_loglik_mu.shape,
+                (n_group, n_position, n_mu),
+            ),
+            "likelihood.group_log_sig2_prior_mass": (
+                self.likelihood
+                .group_log_sig2_prior_mass.shape,
+                (n_group, n_sig2),
+            ),
+        }
+
+        if self.likelihood.group_loglik_mu_sig2 is not None:
+            expected_shapes[
+                "likelihood.group_loglik_mu_sig2"
+            ] = (
+                self.likelihood
+                .group_loglik_mu_sig2.shape,
+                (
+                    n_group,
+                    n_position,
+                    n_mu,
+                    n_sig2,
+                ),
+            )
+
+        if self.windowed is not None:
+            expected_shapes["windowed.score"] = (
+                self.windowed.score.shape,
+                (n_position,),
+            )
+
+        for name, (observed, expected) in (
+            expected_shapes.items()
+        ):
+            if observed != expected:
+                raise ValueError(
+                    f"Invalid shape for {name}: "
+                    f"expected {expected}, got {observed}"
+                )
+
+        if self.fit.df != n_group - 1:
+            raise ValueError(
+                f"Expected LRT df={n_group - 1} for "
+                f"{n_group} groups, got {self.fit.df}"
+            )
+
+
 @dataclass(frozen=True, slots=True)
 class _AlignedData:
     group_names: tuple[str, ...]
@@ -411,6 +634,7 @@ class DifferentialFootprintModel:
             disp_models,
             selected_groups,
         )
+
         grids = self._make_grids()
         nb = self._get_nb(aligned, grids, nb)
         fit, likelihood, prior, boundary_fraction = self._fit_lrt(
@@ -503,12 +727,12 @@ class DifferentialFootprintModel:
         config = self.config
         mu_x = self._grid(
             config.mu_x,
-            np.linspace(-6.0, 6.0, 481),
+            np.linspace(*config.mu_grid_params),
             "mu_x",
         )
         sig2_x = self._grid(
             config.sig2_x,
-            np.geomspace(1e-3, 10.0, 181),
+            np.geomspace(*config.sig2_grid_params),
             "sig2_x",
         )
 

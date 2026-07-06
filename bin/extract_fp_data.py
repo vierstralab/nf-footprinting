@@ -3,7 +3,7 @@ from genome_tools import df_to_genomic_intervals
 from genome_tools.plotting.modular_plot.api import DataBundle
 from genome_tools.plotting.modular_plot.loaders.footprint import FootprintsDataLoader
 
-from differential_test_api import DifferentialFitLoader, WindowedScoreLoader
+from differential_test_api import DifferentialFitLoader, WindowedScoreLoader, DifferentialModelConfig
 
 import sys
 import pandas as pd
@@ -22,7 +22,14 @@ def extract_data_for_dhs_interval(interval, sample_data):
         calc_posteriors=False
     )
     print(data.obs.shape)
-    data = DifferentialFitLoader()._load(data, keep_sig2_loglik=True)
+    data = DifferentialFitLoader()._load(
+        data,
+        keep_sig2_loglik=True,
+        config=DifferentialModelConfig(
+            mu_grid_params=(-5.0, 5.0, 201),
+            sig2_grid_params=(1e-3, 10.0, 81)
+        )
+    )
     print('diff loaded')
     data = WindowedScoreLoader()._load(data)
 
