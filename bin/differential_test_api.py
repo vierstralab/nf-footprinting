@@ -206,7 +206,7 @@ class DifferentialAnalysis:
         *,
         compressed: bool = True,
         require_sig2_loglik: bool = True,
-        extra: Mapping[str, Any] = None,
+        extra = None,
     ) -> Path:
         """Save results needed for plotting and downstream segmentation."""
         path = Path(path)
