@@ -9,6 +9,7 @@ params.dhs_index = '/net/seq/data2/projects/ENCODE4Plus/REGULOME/footprints/cons
 process diff_footprints {
     tag "${dhs_id}"
     conda params.conda
+    publishDir "${params.outdir}/${dhs_id}"
 
     input: 
         val dhs_id
