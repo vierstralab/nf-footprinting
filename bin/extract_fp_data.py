@@ -186,7 +186,8 @@ def to_npz(
 def extract_data_for_dhs_interval(interval, sample_data):
     data = DataBundle(interval=interval)
 
-    data.grouping_column = sample_data.loc[:, 'extended_annotation'].copy()
+    data.groups_data = sample_data.loc[:, 'extended_annotation'].copy()
+    data.grouping_column = 'extended_annotation'
 
     data = FootprintsDataLoader()._load(
         data,
