@@ -3,12 +3,72 @@ from genome_tools import df_to_genomic_intervals
 from genome_tools.plotting.modular_plot.api import DataBundle
 from genome_tools.plotting.modular_plot.loaders.footprint import FootprintsDataLoader
 
-from differential_test_api import DifferentialFitLoader, WindowedScoreLoader, DifferentialModelConfig
+from differential.api import DifferentialLoader, GroupMeanSegmentationLoader, VarianceRatioLoader, EtaSegmentationLoader, CoefficientLikelihoodLoader, CoefficientSegmentationLoader
+from differential.differential import DifferentialConfig, LengthPrior
+from differential.variance_ratio import VarianceRatioConfig
+from differential.coefficients import CoefficientConfig
+
 
 import sys
 import pandas as pd
+import numpy as np
 
 
+def extract_group_means(data, length_prior):
+    data = DifferentialLoader()._load(
+        data,
+        config=DifferentialConfig(
+            mu_min=-6.0,
+            mu_max=6.0,
+            n_mu=201,
+            n_sig2=81  
+        )
+    )
+
+    data = GroupMeanSegmentationLoader()._load(
+        data,
+        length_prior=length_prior,
+    )
+    return data
+
+
+def extract_icc(data, length_prior):
+    data = VarianceRatioLoader()._load(data, config=VarianceRatioConfig(
+        eta_min=-4.0,
+        eta_max=4.0,
+        eta_step=0.05,
+        include_zero=True,
+        method="gaussian",
+        consistent_mass=0.0,
+        eta_prior_mean=-1.0,
+        eta_prior_sd=-2.0,
+    ))
+    data = EtaSegmentationLoader()._load(
+        data,
+        length_prior=length_prior,
+    )
+
+    return data
+
+
+def extract_coefs(data, length_prior):
+    data = CoefficientLikelihoodLoader()._load(
+        data,
+        config=CoefficientConfig(
+            z_min=-5.0,
+            z_max=5.0,
+            z_step=0.05,
+            method="gaussian",
+            zero_mass=0.0,
+            z_prior_sd=1.5,
+        )
+    )
+    data = CoefficientSegmentationLoader()._load(
+        data,
+        length_prior=length_prior,
+    )
+
+    return data
 
 def extract_data_for_dhs_interval(interval, sample_data):
     data = DataBundle(interval=interval)
@@ -22,16 +82,15 @@ def extract_data_for_dhs_interval(interval, sample_data):
         calc_posteriors=False
     )
     print(data.obs.shape)
-    data = DifferentialFitLoader()._load(
-        data,
-        keep_sig2_loglik=True,
-        config=DifferentialModelConfig(
-            mu_grid_params=(-5.0, 5.0, 201),
-            sig2_grid_params=(1e-3, 10.0, 81)
-        )
+
+    length_prior = LengthPrior.from_log_mass(
+        np.r_[np.full(5, -np.inf), np.full(40, -1), -1.1],#, np.full(50, -np.inf)],
+        infer_tail=True,
     )
-    print('diff loaded')
-    data = WindowedScoreLoader()._load(data)
+
+    extract_group_means(data, length_prior)
+    extract_icc(data, length_prior)
+    extract_coefs(data, length_prior)
 
     return data
 
@@ -52,9 +111,17 @@ if __name__ == "__main__":
         dhs_region,
         sample_data
     )
+    save_map = {
+        'diff_data': data.differential,
+        'diff_data_segmentation': data.segmentation,
 
-    data.differential.to_npz(path=sys.argv[4])
-    # dhs_region = GenomicInterval("chr15", 74995300, 74995600)
+        'icc_pointwise': data.variance_ratio,
+        'icc_segmentation': data.eta_segmentation,
 
+        'coefs_likelihood': data.group_coefficient_likelihood,
+        'coefs_segmentation': data.group_coefficient_segmentation,
+    }
 
+    for prefix, save_object in save_map.items():
+        save_object.to_npz(f'{sys.argv[4]}/{prefix}.{dhs_id}.npz')
 
