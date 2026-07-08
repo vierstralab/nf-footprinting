@@ -10,6 +10,7 @@ from footprint_tools.stats import differential as differential_core
 from footprint_tools.stats.distributions import invchi2
 
 from .config import DEFAULT_DIFFERENTIAL, DifferentialConfig
+from .posterior import GridPosterior, normalize_log_mass
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +29,11 @@ class Differential:
     @property
     def common_mu(self) -> np.ndarray:
         return self.mu_x[np.argmax(self.loglik_mu.sum(axis=0), axis=1)]
+
+    def posterior(self, log_mu_prior: np.ndarray | None = None) -> GridPosterior:
+        """Pointwise posterior over mu, shape group x position x mu."""
+        prior = normalize_log_mass(log_mu_prior, self.mu_x.size)
+        return GridPosterior(self.mu_x, self.loglik_mu + prior[None, None, :])
 
     def to_npz(self, path) -> None:
         np.savez_compressed(
