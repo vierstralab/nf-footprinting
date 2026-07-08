@@ -17,6 +17,7 @@ class DifferentialConfig:
     theta_step: float = 0.1
     theta_tail_sd: float = 5.0
     base_chunk_size: int = 32
+    mu_prior_sd_floor: float | None = None
 
     def mu_x(self) -> np.ndarray:
         return np.linspace(self.mu_min, self.mu_max, self.n_mu)
@@ -39,6 +40,9 @@ class VarianceRatioConfig:
     include_zero: bool = True
     method: IntegrationMethod = "gaussian"
     variance_floor: float | None = None
+    consistent_mass: float = 0.30
+    eta_prior_mean: float = -1.0
+    eta_prior_sd: float = 2.0
 
     def eta_x(self) -> np.ndarray:
         finite = np.arange(
@@ -55,6 +59,8 @@ class CoefficientConfig:
     z_max: float = 4.0
     z_step: float = 0.25
     method: IntegrationMethod = "gaussian"
+    zero_mass: float = 0.25
+    z_prior_sd: float = 1.5
 
     def z_x(self) -> np.ndarray:
         x = np.arange(
@@ -68,24 +74,18 @@ class CoefficientConfig:
 
 @dataclass(frozen=True, slots=True)
 class EtaSegmentationConfig:
-    consistent_mass: float = 0.30
-    slab_mean: float = -1.0
-    slab_sd: float = 2.0
     transition_sd: float | None = None
     forbid_same_state: bool = True
 
 
 @dataclass(frozen=True, slots=True)
 class CoefficientSegmentationConfig:
-    zero_mass: float = 0.25
-    slab_sd: float = 1.5
     transition_sd: float | None = None
     forbid_same_state: bool = True
 
 
 @dataclass(frozen=True, slots=True)
 class MeanSegmentationConfig:
-    prior_sd_floor: float | None = None
     transition_sd: float | None = None
     forbid_same_state: bool = False
 

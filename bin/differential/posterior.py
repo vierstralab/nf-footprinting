@@ -39,7 +39,8 @@ class GridPosterior:
     def quantile(self, probability: float) -> np.ndarray:
         if not 0 <= probability <= 1:
             raise ValueError("probability must lie in [0, 1]")
-        return self.x[np.argmax(np.cumsum(self.mass, axis=-1) >= probability, axis=-1)]
+        cumulative = np.cumsum(self.mass, axis=-1)
+        return self.x[np.argmax(cumulative >= probability, axis=-1)]
 
     def prob_gt(self, threshold: float) -> np.ndarray:
         return self._prob(self.x > threshold)
@@ -68,10 +69,10 @@ class GridPosterior:
         return np.exp(logsumexp(self.log_mass[..., mask], axis=-1))
 
 
-def normalize_log_mass(value: np.ndarray | None, size: int) -> np.ndarray:
-    if value is None:
-        return np.full(size, -np.log(size))
+def normalize_log_mass(value: np.ndarray, size: int) -> np.ndarray:
     value = np.asarray(value, dtype=float)
+    if value.shape != (size,):
+        raise ValueError(f"prior must have shape ({size},)")
     return value - logsumexp(value)
 
 
@@ -91,11 +92,16 @@ def spike_slab_log_mass(
     slab_mean: float,
     slab_sd: float,
 ) -> np.ndarray:
-    finite = np.ones(len(x), dtype=bool)
-    finite[spike_index] = False
-    slab = np.exp(normal_grid_log_mass(np.asarray(x)[finite], slab_mean, slab_sd))
-    mass = np.zeros(len(x))
+    x = np.asarray(x, dtype=float)
+    finite = np.isfinite(x)
+    slab = np.zeros(x.size)
+    finite_x = x[finite]
+    finite_mass = np.exp(normal_grid_log_mass(finite_x, slab_mean, slab_sd))
+    slab[finite] = finite_mass
+    slab[spike_index] = 0.0
+    slab /= slab.sum()
+
+    mass = (1 - spike_mass) * slab
     mass[spike_index] = spike_mass
-    mass[finite] = (1 - spike_mass) * slab
     with np.errstate(divide="ignore"):
         return np.log(mass)

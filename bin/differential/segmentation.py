@@ -4,7 +4,7 @@ import numpy as np
 from numba import njit
 from scipy.special import logsumexp
 
-from .posterior import GridPosterior, normal_grid_log_mass, normalize_log_mass
+from .posterior import GridPosterior, normalize_log_mass
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,7 +82,7 @@ def segment(
     state_x: np.ndarray,
     names: tuple[str, ...],
     length_prior: LengthPrior,
-    log_state_prior: np.ndarray | None = None,
+    log_state_prior: np.ndarray,
     transition_sd: float | None = None,
     forbid_same_state: bool = True,
 ) -> Segmentation:
@@ -110,23 +110,6 @@ def segment(
             log_equilibrium, log_transition, log_stationary, stationary_mean,
         )
     return Segmentation(names, GridPosterior(state_x, log_posterior), boundary, log_partition)
-
-
-def fit_group_means(
-    differential,
-    length_prior: LengthPrior,
-    prior_sd_floor: float | None = None,
-    transition_sd: float | None = None,
-    forbid_same_state: bool = False,
-) -> Segmentation:
-    mean = float(np.mean(differential.common_mu))
-    sd = float(np.std(differential.common_mu))
-    floor = prior_sd_floor or np.median(np.diff(differential.mu_x))
-    prior = normal_grid_log_mass(differential.mu_x, mean, max(sd, floor))
-    return segment(
-        differential.loglik_mu, differential.mu_x, differential.group_names,
-        length_prior, prior, transition_sd, forbid_same_state,
-    )
 
 
 def _transition(x, log_prior, sd, forbid_same):
