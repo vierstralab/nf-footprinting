@@ -16,16 +16,15 @@ process diff_footprints {
         val dhs_id
 
     output:
-        tuple val(dhs_id), path(name)
+        tuple val(dhs_id), path("*${dhs_id}.npz")
 
     script:
-    name = "dhs_id.${dhs_id}.npz"
     """
     python3 $moduleDir/bin/extract_fp_data.py \
         ${dhs_id} \
         ${params.dhs_index} \
         ${params.footprints_metadata} \
-        ${name}
+        ./
     """
 }
 
