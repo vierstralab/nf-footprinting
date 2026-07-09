@@ -18,6 +18,7 @@ from .variance_ratio import (
     VarianceRatioLikelihood,
     VarianceRatioModel,
     VarianceRatioPosterior,
+    fit_mu0_segmentation,
     make_eta_log_prior,
 )
 
@@ -34,6 +35,7 @@ __all__ = [
     "VarianceRatioModel",
     "VarianceRatioPosterior",
     "make_eta_log_prior",
+    "fit_mu0_segmentation",
     "EtaSegmentation",
     "fit_eta_segmentation",
     "CoefficientLikelihood",

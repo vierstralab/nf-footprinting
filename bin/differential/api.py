@@ -11,7 +11,7 @@ from .config import (
 )
 from .differential import DifferentialModel, fit_group_means_segmentation
 from .eta import fit_eta_segmentation
-from .variance_ratio import VarianceRatioModel
+from .variance_ratio import VarianceRatioModel, fit_mu0_segmentation
 
 
 class DifferentialLoader(PlotDataLoader):
@@ -69,6 +69,25 @@ class EtaSegmentationLoader(PlotDataLoader):
         log_eta_prior=None,
     ):
         data.eta_segmentation = fit_eta_segmentation(
+            data.variance_ratio,
+            length_prior,
+            config,
+            log_mu0_prior,
+            log_eta_prior,
+        )
+        return data
+
+
+class Mu0SegmentationLoader(PlotDataLoader):
+    def _load(
+        self,
+        data,
+        length_prior,
+        config=DEFAULT_MEAN_SEGMENTATION,
+        log_mu0_prior=None,
+        log_eta_prior=None,
+    ):
+        data.mu0_segmentation = fit_mu0_segmentation(
             data.variance_ratio,
             length_prior,
             config,

@@ -3,7 +3,12 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.special import logsumexp
 
-from .config import DEFAULT_VARIANCE_RATIO, VarianceRatioConfig
+from .config import (
+    DEFAULT_MEAN_SEGMENTATION,
+    DEFAULT_VARIANCE_RATIO,
+    MeanSegmentationConfig,
+    VarianceRatioConfig,
+)
 from .differential import Differential
 from .integration import variance_ratio_group_terms
 from .posterior import (
@@ -12,6 +17,7 @@ from .posterior import (
     normalize_log_mass,
     spike_slab_log_mass,
 )
+from .segmentation import LengthPrior, Segmentation, segment
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +43,21 @@ class VarianceRatioLikelihood:
     def icc_x(self) -> np.ndarray:
         ratio = self.ratio_x
         return ratio / (1 + ratio)
+
+    def marginal_loglik_mu0(
+        self,
+        log_eta_prior: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Per-base likelihood over mu0 after integrating eta."""
+        eta_prior = (
+            self.log_eta_prior
+            if log_eta_prior is None
+            else normalize_log_mass(log_eta_prior, self.eta_x.size)
+        )
+        return logsumexp(
+            self.loglik + eta_prior[None, None, :],
+            axis=2,
+        )
 
     def posterior(
         self,
@@ -148,4 +169,28 @@ def make_eta_log_prior(
         eta_x,
         config.eta_prior_mean,
         config.eta_prior_sd,
+    )
+
+
+def fit_mu0_segmentation(
+    likelihood: VarianceRatioLikelihood,
+    length_prior: LengthPrior,
+    config: MeanSegmentationConfig = DEFAULT_MEAN_SEGMENTATION,
+    log_mu0_prior: np.ndarray | None = None,
+    log_eta_prior: np.ndarray | None = None,
+) -> Segmentation:
+    """Segment the global mean after integrating eta independently per base."""
+    mu0_prior = (
+        likelihood.log_mu0_prior
+        if log_mu0_prior is None
+        else normalize_log_mass(log_mu0_prior, likelihood.mu0_x.size)
+    )
+    return segment(
+        likelihood.marginal_loglik_mu0(log_eta_prior),
+        likelihood.mu0_x,
+        ("mu0",),
+        length_prior,
+        mu0_prior,
+        config.transition_sd,
+        config.forbid_same_state,
     )
