@@ -37,9 +37,9 @@ def extract_icc(data, length_prior):
         eta_min=-4.0,
         eta_max=4.0,
         eta_step=0.05,
-        include_zero=True,
+        include_zero=False,
         method="gaussian",
-        consistent_mass=0.0,
+        consistent_mass=None,
         eta_prior_mean=-1.0,
         eta_prior_sd=-2.0,
     ))
@@ -59,7 +59,7 @@ def extract_coefs(data, length_prior):
             z_max=5.0,
             z_step=0.05,
             method="gaussian",
-            zero_mass=0.0,
+            zero_mass=None,
             z_prior_sd=1.5,
         )
     )

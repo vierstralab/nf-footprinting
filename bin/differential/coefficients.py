@@ -15,7 +15,12 @@ from .integration import (
     leave_one_out_reference,
     variance_ratio_group_terms,
 )
-from .posterior import GridPosterior, normalize_log_mass, spike_slab_log_mass
+from .posterior import (
+    GridPosterior,
+    normal_grid_log_mass,
+    normalize_log_mass,
+    spike_slab_log_mass,
+)
 from .segmentation import LengthPrior, Segmentation, segment
 from .variance_ratio import VarianceRatioLikelihood
 
@@ -114,6 +119,8 @@ def make_z_log_prior(
     z_x: np.ndarray,
     config: CoefficientConfig = DEFAULT_COEFFICIENT,
 ) -> np.ndarray:
+    if config.zero_mass is None:
+        return normal_grid_log_mass(z_x, 0.0, config.z_prior_sd)
     zero = int(np.flatnonzero(z_x == 0.0)[0])
     return spike_slab_log_mass(
         z_x,
