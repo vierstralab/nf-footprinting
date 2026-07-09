@@ -133,6 +133,10 @@ def make_eta_log_prior(
 ) -> np.ndarray:
     spike = np.flatnonzero(np.isneginf(eta_x))
     if spike.size:
+        if config.consistent_mass is None:
+            raise ValueError(
+                "eta_x contains an exact zero state but consistent_mass is None"
+            )
         return spike_slab_log_mass(
             eta_x,
             int(spike[0]),

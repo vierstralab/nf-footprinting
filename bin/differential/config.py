@@ -40,7 +40,7 @@ class VarianceRatioConfig:
     include_zero: bool = True
     method: IntegrationMethod = "gaussian"
     variance_floor: float | None = None
-    consistent_mass: float = 0.30
+    consistent_mass: float | None = 0.30
     eta_prior_mean: float = -1.0
     eta_prior_sd: float = 2.0
 
@@ -50,7 +50,9 @@ class VarianceRatioConfig:
             self.eta_max + self.eta_step / 2,
             self.eta_step,
         )
-        return np.r_[-np.inf, finite] if self.include_zero else finite
+        if self.include_zero and self.consistent_mass is not None:
+            return np.r_[-np.inf, finite]
+        return finite
 
 
 @dataclass(frozen=True, slots=True)
