@@ -11,6 +11,7 @@ from .config import (
 )
 from .differential import DifferentialModel, fit_group_means_segmentation
 from .eta import fit_eta_segmentation
+from .group_counts import infer_kdev, infer_kfp
 from .variance_ratio import VarianceRatioModel, fit_mu0_segmentation
 
 
@@ -129,5 +130,45 @@ class CoefficientSegmentationLoader(PlotDataLoader):
             length_prior,
             config,
             log_z_prior,
+        )
+        return data
+
+
+class FootprintCountLoader(PlotDataLoader):
+    def _load(
+        self,
+        data,
+        threshold=0.0,
+        source="segmented",
+        log_mu_prior=None,
+    ):
+        if source == "segmented":
+            mu_posterior = data.segmentation.posterior
+        elif source == "pointwise":
+            mu_posterior = data.differential.posterior(log_mu_prior)
+        else:
+            raise ValueError("source must be 'segmented' or 'pointwise'")
+        data.kfp = infer_kfp(mu_posterior, threshold)
+        return data
+
+
+class DeviantGroupCountLoader(PlotDataLoader):
+    def _load(
+        self,
+        data,
+        threshold=1.0,
+        variance_floor=None,
+        position_chunk_size=64,
+        log_mu0_prior=None,
+        log_eta_prior=None,
+    ):
+        data.kdev = infer_kdev(
+            data.differential,
+            data.variance_ratio,
+            threshold=threshold,
+            variance_floor=variance_floor,
+            position_chunk_size=position_chunk_size,
+            log_mu0_prior=log_mu0_prior,
+            log_eta_prior=log_eta_prior,
         )
         return data

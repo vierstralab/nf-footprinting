@@ -12,6 +12,7 @@ from .differential import (
     make_group_mean_log_prior,
 )
 from .eta import EtaSegmentation, fit_eta_segmentation
+from .group_counts import infer_kdev, infer_kfp
 from .posterior import GridPosterior
 from .segmentation import LengthPrior, Segmentation, segment
 from .variance_ratio import (
@@ -21,6 +22,7 @@ from .variance_ratio import (
     fit_mu0_segmentation,
     make_eta_log_prior,
 )
+
 
 __all__ = [
     "GridPosterior",
@@ -38,6 +40,8 @@ __all__ = [
     "fit_mu0_segmentation",
     "EtaSegmentation",
     "fit_eta_segmentation",
+    "infer_kfp",
+    "infer_kdev",
     "CoefficientLikelihood",
     "CoefficientModel",
     "make_z_log_prior",
