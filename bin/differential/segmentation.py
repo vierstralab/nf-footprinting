@@ -4,7 +4,7 @@ import numpy as np
 from numba import njit
 from scipy.special import logsumexp
 
-from .posterior import GridPosterior, normalize_log_mass
+from .posterior import GridPosterior
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,30 +86,57 @@ def segment(
     transition_sd: float | None = None,
     forbid_same_state: bool = True,
 ) -> Segmentation:
+    """Segment one or more tracks on a shared state grid.
+
+    ``log_state_prior`` may have shape ``state`` or ``track x state``.  A
+    track-specific prior is useful when tracks share a state grid but have
+    different prior-predictive state distributions, as for sample-level theta
+    inference.
+    """
     loglik = np.asarray(loglik, dtype=float)
     state_x = np.asarray(state_x, dtype=float)
     if loglik.ndim == 2:
         loglik = loglik[None]
-    log_state_prior = normalize_log_mass(log_state_prior, len(state_x))
-    log_length, log_tail = length_prior.for_states(len(state_x))
-    log_transition, log_stationary = _transition(
-        state_x, log_state_prior, transition_sd, forbid_same_state
-    )
-    mean_length, log_survival, log_equilibrium, log_q = _length_terms(
-        log_length, log_tail, loglik.shape[1]
-    )
-    stationary_mean = float(np.exp(log_stationary) @ mean_length)
+    if loglik.ndim != 3:
+        raise ValueError("loglik must have shape position x state or track x position x state")
 
     g, n, m = loglik.shape
+    if state_x.shape != (m,):
+        raise ValueError("state grid does not match the likelihood state axis")
+    if len(names) != g:
+        raise ValueError("names must match the number of tracks")
+
+    log_state_prior = _normalize_track_prior(log_state_prior, g, m)
+    log_length, log_tail = length_prior.for_states(m)
+    mean_length, log_survival, log_equilibrium, log_q = _length_terms(
+        log_length, log_tail, n
+    )
+
     log_partition = np.empty(g)
     log_posterior = np.empty_like(loglik)
     boundary = np.empty((g, max(n - 1, 0)))
     for i in range(g):
+        log_transition, log_stationary = _transition(
+            state_x, log_state_prior[i], transition_sd, forbid_same_state
+        )
+        stationary_mean = float(np.exp(log_stationary) @ mean_length)
         log_partition[i], log_posterior[i], boundary[i] = _partition(
             np.ascontiguousarray(loglik[i]), log_q, log_survival,
             log_equilibrium, log_transition, log_stationary, stationary_mean,
         )
     return Segmentation(names, GridPosterior(state_x, log_posterior), boundary, log_partition)
+
+
+def _normalize_track_prior(value: np.ndarray, n_track: int, n_state: int) -> np.ndarray:
+    value = np.asarray(value, dtype=float)
+    if value.ndim == 1:
+        if value.shape != (n_state,):
+            raise ValueError(f"prior must have shape ({n_state},) or ({n_track}, {n_state})")
+        value = np.broadcast_to(value, (n_track, n_state)).copy()
+    elif value.shape != (n_track, n_state):
+        raise ValueError(f"prior must have shape ({n_state},) or ({n_track}, {n_state})")
+    value -= logsumexp(value, axis=1, keepdims=True)
+    return np.ascontiguousarray(value)
 
 
 def _transition(x, log_prior, sd, forbid_same):
