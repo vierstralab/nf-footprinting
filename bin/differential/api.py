@@ -7,12 +7,14 @@ from .config import (
     DEFAULT_DIFFERENTIAL,
     DEFAULT_ETA_SEGMENTATION,
     DEFAULT_MEAN_SEGMENTATION,
+    DEFAULT_THETA,
+    DEFAULT_THETA_SEGMENTATION,
     DEFAULT_VARIANCE_RATIO,
 )
 from .differential import DifferentialModel, fit_group_means_segmentation
 from .eta import fit_eta_segmentation
 from .group_counts import infer_kdev, infer_kfp
-from .theta import fit_theta_likelihood, fit_theta_segmentation
+from .theta import ThetaModel, fit_theta_segmentation
 from .variance_ratio import VarianceRatioModel, fit_mu0_segmentation
 
 
@@ -179,27 +181,16 @@ class ThetaLoader(PlotDataLoader):
     def _load(
         self,
         data,
-        mode="group_informed",
-        theta_x=None,
-        theta_step=0.1,
-        theta_tail_sd=5.0,
-        position_chunk_size=8,
-        storage_dtype="float32",
+        config=DEFAULT_THETA,
         log_mu_prior=None,
     ):
-        data.theta = fit_theta_likelihood(
+        data.theta = ThetaModel(config).fit(
             data.groups_data,
             data.obs,
             data.exp,
             data.disp_models,
             data.differential,
-            mode=mode,
-            theta_x=theta_x,
-            theta_step=theta_step,
-            theta_tail_sd=theta_tail_sd,
-            position_chunk_size=position_chunk_size,
-            storage_dtype=storage_dtype,
-            log_mu_prior=log_mu_prior,
+            log_mu_prior,
         )
         return data
 
@@ -209,7 +200,7 @@ class ThetaSegmentationLoader(PlotDataLoader):
         self,
         data,
         length_prior,
-        config=DEFAULT_MEAN_SEGMENTATION,
+        config=DEFAULT_THETA_SEGMENTATION,
         log_theta_prior=None,
     ):
         data.theta_segmentation = fit_theta_segmentation(

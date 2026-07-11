@@ -15,7 +15,12 @@ from .eta import EtaSegmentation, fit_eta_segmentation
 from .group_counts import infer_kdev, infer_kfp
 from .posterior import GridPosterior
 from .segmentation import LengthPrior, Segmentation, segment
-from .theta import ThetaLikelihood, fit_theta_likelihood, fit_theta_segmentation
+from .theta import (
+    ThetaLikelihood,
+    ThetaModel,
+    fit_theta_likelihood,
+    fit_theta_segmentation,
+)
 from .variance_ratio import (
     VarianceRatioLikelihood,
     VarianceRatioModel,
@@ -35,6 +40,7 @@ __all__ = [
     "Segmentation",
     "segment",
     "ThetaLikelihood",
+    "ThetaModel",
     "fit_theta_likelihood",
     "fit_theta_segmentation",
     "VarianceRatioLikelihood",

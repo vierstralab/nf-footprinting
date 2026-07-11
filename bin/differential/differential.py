@@ -28,6 +28,7 @@ class Differential:
     loglik_mu_sig2: np.ndarray
     log_sig2_prior: np.ndarray
     log_mu_prior: np.ndarray
+    theta_x: np.ndarray | None = None
 
     @property
     def group_mu(self) -> np.ndarray:
@@ -54,6 +55,7 @@ class Differential:
             loglik_mu_sig2=self.loglik_mu_sig2,
             log_sig2_prior=self.log_sig2_prior,
             log_mu_prior=self.log_mu_prior,
+            **({"theta_x": self.theta_x} if self.theta_x is not None else {}),
         )
 
     @classmethod
@@ -67,6 +69,7 @@ class Differential:
                 x["loglik_mu_sig2"],
                 x["log_sig2_prior"],
                 x["log_mu_prior"],
+                x["theta_x"] if "theta_x" in x.files else None,
             )
 
 
@@ -127,6 +130,7 @@ class DifferentialModel:
             loglik_mu_sig2,
             log_sig2_prior,
             log_mu_prior,
+            theta_x,
         )
 
     @staticmethod

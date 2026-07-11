@@ -1,7 +1,6 @@
 """Sample-level latent-signal likelihoods and segmentation."""
 
 from dataclasses import dataclass
-from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -9,12 +8,16 @@ from scipy.special import logsumexp, ndtr
 
 from footprint_tools.stats import differential as differential_core
 
-from .config import DEFAULT_MEAN_SEGMENTATION, MeanSegmentationConfig
+from .config import (
+    DEFAULT_THETA,
+    DEFAULT_THETA_SEGMENTATION,
+    ThetaConfig,
+    ThetaMode,
+    ThetaSegmentationConfig,
+)
 from .differential import Differential
 from .posterior import GridPosterior, normalize_log_mass
 from .segmentation import LengthPrior, Segmentation, segment
-
-ThetaMode = Literal["sample_only", "group_informed"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,7 +38,7 @@ class ThetaLikelihood:
     theta_x: np.ndarray
     loglik: np.ndarray
     log_theta_prior: np.ndarray
-    mode: str = "group_informed"
+    mode: ThetaMode = "group_informed"
 
     def __post_init__(self) -> None:
         theta_x = np.asarray(self.theta_x, dtype=float)
@@ -95,19 +98,37 @@ class ThetaLikelihood:
             )
 
 
+class ThetaModel:
+    def __init__(self, config: ThetaConfig = DEFAULT_THETA):
+        self.config = config
+
+    def fit(
+        self,
+        groups_data: pd.Series,
+        obs: pd.DataFrame,
+        exp: pd.DataFrame,
+        disp_models: pd.Series,
+        differential: Differential,
+        log_mu_prior: np.ndarray | None = None,
+    ) -> ThetaLikelihood:
+        return fit_theta_likelihood(
+            groups_data,
+            obs,
+            exp,
+            disp_models,
+            differential,
+            self.config,
+            log_mu_prior,
+        )
+
+
 def fit_theta_likelihood(
     groups_data: pd.Series,
     obs: pd.DataFrame,
     exp: pd.DataFrame,
     disp_models: pd.Series,
     differential: Differential,
-    *,
-    mode: ThetaMode = "group_informed",
-    theta_x: np.ndarray | None = None,
-    theta_step: float = 0.1,
-    theta_tail_sd: float = 5.0,
-    position_chunk_size: int = 8,
-    storage_dtype=np.float32,
+    config: ThetaConfig = DEFAULT_THETA,
     log_mu_prior: np.ndarray | None = None,
 ) -> ThetaLikelihood:
     """Construct sample-level theta evidence from the raw count data.
@@ -117,13 +138,7 @@ def fit_theta_likelihood(
     sample-by-``(mu, sig2)`` arrays are processed in position chunks and are not
     retained.
     """
-    if mode not in ("sample_only", "group_informed"):
-        raise ValueError("mode must be 'sample_only' or 'group_informed'")
-    if position_chunk_size < 1:
-        raise ValueError("position_chunk_size must be positive")
-    storage_dtype = np.dtype(storage_dtype)
-    if storage_dtype.kind != "f":
-        raise ValueError("storage_dtype must be a floating-point dtype")
+    storage_dtype = np.dtype(config.storage_dtype)
 
     group_names = differential.group_names
     selected = groups_data[groups_data.isin(group_names)]
@@ -144,17 +159,12 @@ def fit_theta_likelihood(
         np.flatnonzero(labels == name) for name in group_names
     )
 
-    if theta_x is None:
-        theta_x = _make_theta_grid(
-            differential.mu_x,
-            differential.sig2_x,
-            theta_step,
-            theta_tail_sd,
+    if differential.theta_x is None:
+        raise ValueError(
+            "Differential does not contain theta_x; refit it with the current "
+            "DifferentialModel before fitting sample-level theta"
         )
-    else:
-        theta_x = np.asarray(theta_x, dtype=float)
-        if theta_x.ndim != 1 or theta_x.size < 2 or np.any(np.diff(theta_x) <= 0):
-            raise ValueError("theta_x must be a strictly increasing one-dimensional grid")
+    theta_x = np.asarray(differential.theta_x, dtype=float)
 
     mu_prior = (
         differential.log_mu_prior
@@ -194,10 +204,10 @@ def fit_theta_likelihood(
 
     for group, indices in enumerate(group_indices):
         sample_prior[indices] = group_theta_prior[group]
-        for lo in range(0, n_position, position_chunk_size):
-            hi = min(lo + position_chunk_size, n_position)
+        for lo in range(0, n_position, config.position_chunk_size):
+            hi = min(lo + config.position_chunk_size, n_position)
             x = np.take(sample_loglik[:, lo:hi], indices, axis=2)
-            if mode == "sample_only":
+            if config.mode == "sample_only":
                 output[indices, lo:hi] = x.transpose(2, 1, 0).astype(
                     storage_dtype, copy=False
                 )
@@ -234,14 +244,14 @@ def fit_theta_likelihood(
         theta_x,
         output,
         sample_prior,
-        mode,
+        config.mode,
     )
 
 
 def fit_theta_segmentation(
     theta: ThetaLikelihood,
     length_prior: LengthPrior,
-    config: MeanSegmentationConfig = DEFAULT_MEAN_SEGMENTATION,
+    config: ThetaSegmentationConfig = DEFAULT_THETA_SEGMENTATION,
     log_theta_prior: np.ndarray | None = None,
 ) -> Segmentation:
     """Segment each sample's theta track using the generic segmenter."""
@@ -255,16 +265,6 @@ def fit_theta_segmentation(
         config.transition_sd,
         config.forbid_same_state,
     )
-
-
-def _make_theta_grid(mu_x, sig2_x, step, tail_sd):
-    if step <= 0 or tail_sd <= 0:
-        raise ValueError("theta_step and theta_tail_sd must be positive")
-    margin = tail_sd * np.sqrt(np.max(sig2_x))
-    lo = float(mu_x[0] - margin)
-    hi = float(mu_x[-1] + margin)
-    n = int(np.ceil((hi - lo) / step)) + 1
-    return np.linspace(lo, hi, n)
 
 
 def _theta_kernel(mu_x, sig2_x, theta_x):
