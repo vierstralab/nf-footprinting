@@ -14,7 +14,14 @@ from .differential import (
 from .eta import EtaSegmentation, fit_eta_segmentation
 from .group_counts import infer_kdev, infer_kfp
 from .posterior import GridPosterior
-from .segmentation import LengthPrior, Segmentation, segment
+from .segmentation import (
+    LengthPrior,
+    Segmentation,
+    SegmentationPath,
+    sample_posterior_segmentations,
+    sample_prior_segmentations,
+    segment,
+)
 from .theta import (
     ThetaLikelihood,
     ThetaModel,
@@ -38,7 +45,10 @@ __all__ = [
     "fit_group_means_segmentation",
     "LengthPrior",
     "Segmentation",
+    "SegmentationPath",
     "segment",
+    "sample_posterior_segmentations",
+    "sample_prior_segmentations",
     "ThetaLikelihood",
     "ThetaModel",
     "fit_theta_likelihood",

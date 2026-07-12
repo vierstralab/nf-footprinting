@@ -83,6 +83,24 @@ class Segmentation:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class SegmentationPath:
+    starts: np.ndarray
+    ends: np.ndarray
+    state_index: np.ndarray
+    state_value: np.ndarray
+
+    @property
+    def n_segments(self) -> int:
+        return self.starts.size
+
+    def dense(self) -> np.ndarray:
+        return np.repeat(self.state_value, self.ends - self.starts)
+
+    def dense_index(self) -> np.ndarray:
+        return np.repeat(self.state_index, self.ends - self.starts)
+
+
 def segment(
     loglik: np.ndarray,
     state_x: np.ndarray,
@@ -92,85 +110,116 @@ def segment(
     transition_sd: float | None = None,
     forbid_same_state: bool = True,
 ) -> Segmentation:
-    """Segment one or more tracks on a shared state grid.
+    """Exactly marginalize segmentations on a shared finite state grid."""
+    loglik, state_x = _track_inputs(loglik, state_x, names)
+    g, n, m = loglik.shape
+    log_state_prior = _normalize_track_prior(log_state_prior, g, m)
+    log_length, log_tail = length_prior.for_states(m)
+    mean_length, log_survival, log_equilibrium = _length_terms(log_length, log_tail, n)
 
-    ``log_state_prior`` may have shape ``state`` or ``track x state``.
-    Independent transitions are evaluated in linear time in the number of
-    states. Gaussian attraction transitions retain only numerically nonzero
-    entries, so narrow kernels are evaluated as banded sparse transitions.
-    """
+    def run_track(i):
+        model = _transition_model(
+            state_x, log_state_prior[i], transition_sd, forbid_same_state
+        )
+        stationary_mean = float(np.exp(model[-1]) @ mean_length)
+        return _partition(
+            np.ascontiguousarray(loglik[i]), log_length, log_tail,
+            log_survival, log_equilibrium, log_state_prior[i],
+            *model[:-1], model[-1], stationary_mean,
+        )
+
+    results = [run_track(0)]
+    if g > 1:
+        with ThreadPoolExecutor(max_workers=min(g - 1, 32)) as pool:
+            results.extend(pool.map(run_track, range(1, g)))
+    z, posterior, boundary = map(np.asarray, zip(*results))
+    return Segmentation(names, GridPosterior(state_x, posterior), boundary, z)
+
+
+def sample_posterior_segmentations(
+    loglik: np.ndarray,
+    state_x: np.ndarray,
+    names: tuple[str, ...],
+    length_prior: LengthPrior,
+    log_state_prior: np.ndarray,
+    n_draws: int = 1,
+    transition_sd: float | None = None,
+    forbid_same_state: bool = True,
+    rng: np.random.Generator | None = None,
+) -> dict[str, tuple["SegmentationPath", ...]]:
+    """Draw independent exact posterior paths by stochastic traceback."""
+    if n_draws < 1:
+        raise ValueError("n_draws must be positive")
+    loglik, state_x = _track_inputs(loglik, state_x, names)
+    g, n, m = loglik.shape
+    prior = _normalize_track_prior(log_state_prior, g, m)
+    log_q, log_tail = length_prior.for_states(m)
+    mean, survival, equilibrium = _length_terms(log_q, log_tail, n)
+    rng = np.random.default_rng() if rng is None else rng
+
+    def prepare(i):
+        model = _transition_model(state_x, prior[i], transition_sd, forbid_same_state)
+        prefix = _prefix_sum(np.ascontiguousarray(loglik[i]))
+        reverse, outgoing = _reverse_messages(
+            prefix, log_q, log_tail, survival, prior[i], *model[:-1]
+        )
+        return model, prefix, reverse, outgoing
+
+    prepared = [prepare(0)]
+    if g > 1:
+        with ThreadPoolExecutor(max_workers=min(g - 1, 32)) as pool:
+            prepared.extend(pool.map(prepare, range(1, g)))
+    return {
+        name: _posterior_paths(state_x, prior[i], log_q, log_tail, survival,
+                               equilibrium, mean, *prepared[i], n_draws, rng)
+        for i, name in enumerate(names)
+    }
+
+
+def sample_prior_segmentations(
+    n_positions: int,
+    state_x: np.ndarray,
+    names: tuple[str, ...],
+    length_prior: LengthPrior,
+    log_state_prior: np.ndarray,
+    n_draws: int = 1,
+    transition_sd: float | None = None,
+    forbid_same_state: bool = True,
+    rng: np.random.Generator | None = None,
+) -> dict[str, tuple["SegmentationPath", ...]]:
+    """Draw stationary finite-window segmentations from the model prior."""
+    if n_positions < 1 or n_draws < 1:
+        raise ValueError("n_positions and n_draws must be positive")
+    state_x = np.asarray(state_x, dtype=float)
+    if state_x.ndim != 1 or state_x.size < 1 or len(names) < 1:
+        raise ValueError("state_x and names must be nonempty")
+    m = state_x.size
+    prior = _normalize_track_prior(log_state_prior, len(names), m)
+    log_q, log_tail = length_prior.for_states(m)
+    mean, survival, equilibrium = _length_terms(log_q, log_tail, n_positions)
+    rng = np.random.default_rng() if rng is None else rng
+    result = {}
+    for i, name in enumerate(names):
+        model = _transition_model(state_x, prior[i], transition_sd, forbid_same_state)
+        result[name] = _prior_paths(
+            state_x, prior[i], log_q, log_tail, survival, equilibrium, mean,
+            model, n_positions, n_draws, rng,
+        )
+    return result
+
+
+def _track_inputs(loglik, state_x, names):
     loglik = np.asarray(loglik, dtype=float)
     state_x = np.asarray(state_x, dtype=float)
     if loglik.ndim == 2:
         loglik = loglik[None]
-    if loglik.ndim != 3:
-        raise ValueError("loglik must have shape position x state or track x position x state")
-
-    g, n, m = loglik.shape
-    if state_x.shape != (m,):
-        raise ValueError("state grid does not match the likelihood state axis")
-    if len(names) != g:
-        raise ValueError("names must match the number of tracks")
-
-    log_state_prior = _normalize_track_prior(log_state_prior, g, m)
-    log_length, log_tail = length_prior.for_states(m)
-    mean_length, log_survival, log_equilibrium = _length_terms(
-        log_length, log_tail, n
-    )
-
-    if transition_sd is None:
-        mode = _INDEPENDENT_NO_SELF if forbid_same_state else _INDEPENDENT
-        log_nu = np.empty_like(log_state_prior)
-        if mode == _INDEPENDENT:
-            log_nu[:] = log_state_prior
-        else:
-            p = np.exp(log_state_prior)
-            if np.any(p >= 1):
-                raise ValueError("forbid_same_state requires at least two states with positive prior mass")
-            log_nu[:] = log_state_prior + np.log1p(-p)
-            log_nu -= logsumexp(log_nu, axis=1, keepdims=True)
-        stationary_mean = np.exp(log_nu) @ mean_length
-        log_partition = np.empty(g)
-        log_posterior = np.empty_like(loglik)
-        boundary = np.empty((g, max(n - 1, 0)))
-        empty_i = np.empty(0, dtype=np.int64)
-        empty_f = np.empty(0)
-
-        def run_track(i):
-            return _partition(
-                np.ascontiguousarray(loglik[i]), log_length, log_tail,
-                log_survival, log_equilibrium, log_state_prior[i], mode,
-                empty_i, empty_i, empty_f, empty_i, empty_i, empty_f,
-                log_nu[i], stationary_mean[i],
-            )
-
-        results = [run_track(0)]
-        if g > 1:
-            with ThreadPoolExecutor(max_workers=min(g - 1, 32)) as pool:
-                results.extend(pool.map(run_track, range(1, g)))
-        for i, (z, posterior, borders) in enumerate(results):
-            log_partition[i] = z
-            log_posterior[i] = posterior
-            boundary[i] = borders
-    else:
-        log_partition = np.empty(g)
-        log_posterior = np.empty_like(loglik)
-        boundary = np.empty((g, max(n - 1, 0)))
-        for i in range(g):
-            transition = _sparse_transition(
-                state_x, log_state_prior[i], transition_sd, forbid_same_state
-            )
-            stationary_mean = float(np.exp(transition[-1]) @ mean_length)
-            log_partition[i], log_posterior[i], boundary[i] = _partition(
-                np.ascontiguousarray(loglik[i]), log_length, log_tail,
-                log_survival, log_equilibrium, log_state_prior[i],
-                _SPARSE, *transition[:-1], transition[-1], stationary_mean,
-            )
-
-    return Segmentation(
-        names, GridPosterior(state_x, log_posterior), boundary, log_partition
-    )
-
+    if loglik.ndim != 3 or loglik.shape[0] < 1:
+        raise ValueError("loglik must contain at least one track")
+    if state_x.shape != (loglik.shape[2],) or len(names) != loglik.shape[0]:
+        raise ValueError("state grid or names do not match the likelihood")
+    if loglik.shape[1] < 1:
+        raise ValueError("at least one position is required")
+    return loglik, state_x
 
 def _normalize_track_prior(value: np.ndarray, n_track: int, n_state: int) -> np.ndarray:
     value = np.asarray(value, dtype=float)
@@ -184,14 +233,34 @@ def _normalize_track_prior(value: np.ndarray, n_track: int, n_state: int) -> np.
     return np.ascontiguousarray(value)
 
 
+def _transition_model(x, log_prior, sd, forbid_same):
+    m = len(x)
+    if sd is not None:
+        return (_SPARSE, *_sparse_transition(x, log_prior, sd, forbid_same))
+    mode = _INDEPENDENT_NO_SELF if forbid_same else _INDEPENDENT
+    if mode == _INDEPENDENT_NO_SELF:
+        p = np.exp(log_prior)
+        if m < 2 or np.any(p >= 1):
+            raise ValueError("forbid_same_state requires at least two positive states")
+        log_nu = log_prior + np.log1p(-p)
+        log_nu -= logsumexp(log_nu)
+    else:
+        log_nu = log_prior.copy()
+    empty_i = np.empty(0, dtype=np.int64)
+    empty_f = np.empty(0)
+    return mode, empty_i, empty_i, empty_f, empty_i, empty_i, empty_f, log_nu
+
+
 def _sparse_transition(x, log_prior, sd, forbid_same):
     """Return row/column sparse forms and the stationary state mass."""
     m = len(x)
     if m == 1:
-        empty_i = np.empty(0, dtype=np.int64)
-        empty_f = np.empty(0, dtype=float)
-        ptr = np.zeros(2, dtype=np.int64)
-        return ptr, empty_i, empty_f, ptr, empty_i, empty_f, np.zeros(1)
+        if forbid_same:
+            raise ValueError("forbid_same_state requires at least two states")
+        ptr = np.array([0, 1], dtype=np.int64)
+        idx = np.array([0], dtype=np.int64)
+        zero = np.zeros(1)
+        return ptr, idx, zero, ptr, idx, zero, zero
 
     log_t = np.broadcast_to(log_prior, (m, m)).copy()
     log_t -= (x[:, None] - x[None]) ** 2 / (2 * sd * sd)
@@ -266,6 +335,149 @@ def _length_terms(log_mass, log_tail, n):
             )
         mean[state] = base
     return mean, survival, equilibrium
+
+
+def _probabilities(log_weight):
+    log_weight = np.asarray(log_weight, dtype=float)
+    peak = np.max(log_weight)
+    if not np.isfinite(peak):
+        raise RuntimeError("no segmentation has positive probability")
+    weight = np.exp(log_weight - peak)
+    return weight / weight.sum()
+
+
+def _duration_log_mass(log_q, log_tail, state, lengths):
+    lengths = np.asarray(lengths)
+    l0 = log_q.shape[1]
+    out = np.full(lengths.shape, -np.inf)
+    explicit = lengths <= l0
+    out[explicit] = log_q[state, lengths[explicit] - 1]
+    tail = ~explicit
+    if np.isfinite(log_tail[state]):
+        out[tail] = log_q[state, -1] + (lengths[tail] - l0) * log_tail[state]
+    return out
+
+
+def _transition_candidates(previous, prior, model, reverse=None):
+    mode, row_ptr, col_idx, row_logp, *_ = model
+    if mode == _SPARSE:
+        sl = slice(row_ptr[previous], row_ptr[previous + 1])
+        state, logp = col_idx[sl], row_logp[sl]
+    else:
+        state = np.arange(prior.size)
+        if mode == _INDEPENDENT_NO_SELF:
+            state = state[state != previous]
+            logp = prior[state] - np.log1p(-np.exp(prior[previous]))
+        else:
+            logp = prior
+    if reverse is not None:
+        logp = logp + reverse[state]
+    return state, _probabilities(logp)
+
+
+def _path(starts, ends, states, state_x):
+    states = np.asarray(states, dtype=np.int64)
+    return SegmentationPath(
+        np.asarray(starts, dtype=np.int64),
+        np.asarray(ends, dtype=np.int64),
+        states,
+        state_x[states],
+    )
+
+
+def _posterior_paths(state_x, prior, log_q, log_tail, survival, equilibrium,
+                     mean, model, prefix, reverse, outgoing, n_draws, rng):
+    n, m = prefix.shape[0] - 1, state_x.size
+    log_nu = model[-1]
+    first = np.empty((m, n))
+    for state in range(m):
+        if n > 1:
+            first[state, :-1] = (
+                log_nu[state] + survival[state, 1:n]
+                + prefix[1:n, state] + outgoing[1:n, state]
+            )
+        first[state, -1] = (
+            log_nu[state] + equilibrium[state, n] + prefix[n, state]
+        )
+    first_state = _probabilities(logsumexp(first, axis=1))
+    first_end = [_probabilities(row) for row in first]
+    state_cache, end_cache = {}, {}
+    paths = []
+    for _ in range(n_draws):
+        state = rng.choice(m, p=first_state)
+        end = rng.choice(np.arange(1, n + 1), p=first_end[state])
+        starts, ends, states = [0], [end], [state]
+        while end < n:
+            key = (end, state)
+            if key not in state_cache:
+                state_cache[key] = _transition_candidates(
+                    state, prior, model, reverse[end]
+                )
+            candidates, probability = state_cache[key]
+            state = rng.choice(candidates, p=probability)
+            start = end
+            key = (start, state)
+            if key not in end_cache:
+                possible = np.arange(start + 1, n + 1)
+                weight = np.empty(n - start)
+                if possible.size > 1:
+                    lengths = possible[:-1] - start
+                    weight[:-1] = (
+                        _duration_log_mass(log_q, log_tail, state, lengths)
+                        + prefix[possible[:-1], state] - prefix[start, state]
+                        + outgoing[possible[:-1], state]
+                    )
+                weight[-1] = (
+                    survival[state, n - start]
+                    + prefix[n, state] - prefix[start, state]
+                )
+                end_cache[key] = (possible, _probabilities(weight))
+            possible, probability = end_cache[key]
+            end = rng.choice(possible, p=probability)
+            starts.append(start); ends.append(end); states.append(state)
+        paths.append(_path(starts, ends, states, state_x))
+    return tuple(paths)
+
+
+def _prior_paths(state_x, prior, log_q, log_tail, survival, equilibrium,
+                 mean, model, n, n_draws, rng):
+    m = state_x.size
+    first_state = _probabilities(model[-1] + np.log(mean))
+    first_end = []
+    for state in range(m):
+        weight = np.empty(n)
+        if n > 1:
+            weight[:-1] = survival[state, 1:n] - np.log(mean[state])
+        weight[-1] = equilibrium[state, n] - np.log(mean[state])
+        first_end.append(_probabilities(weight))
+    transition_cache, length_cache = {}, {}
+    paths = []
+    for _ in range(n_draws):
+        state = rng.choice(m, p=first_state)
+        end = rng.choice(np.arange(1, n + 1), p=first_end[state])
+        starts, ends, states = [0], [end], [state]
+        while end < n:
+            if state not in transition_cache:
+                transition_cache[state] = _transition_candidates(state, prior, model)
+            candidates, probability = transition_cache[state]
+            state = rng.choice(candidates, p=probability)
+            start = end
+            key = (n - start, state)
+            if key not in length_cache:
+                remaining = n - start
+                possible = np.arange(1, remaining + 1)
+                weight = np.empty(remaining)
+                if remaining > 1:
+                    weight[:-1] = _duration_log_mass(
+                        log_q, log_tail, state, possible[:-1]
+                    )
+                weight[-1] = survival[state, remaining]
+                length_cache[key] = (possible, _probabilities(weight))
+            lengths, probability = length_cache[key]
+            end = start + rng.choice(lengths, p=probability)
+            starts.append(start); ends.append(end); states.append(state)
+        paths.append(_path(starts, ends, states, state_x))
+    return tuple(paths)
 
 
 @njit(cache=True, inline="always")
@@ -375,27 +587,32 @@ def _boundary_transition(forward, reverse, mode, log_prior, log_denom,
 
 
 @njit(cache=True, nogil=True)
-def _partition(emission, log_q, log_tail, log_survival, log_equilibrium,
-               log_prior, mode, row_ptr, col_idx, row_logp,
-               col_ptr, row_idx, col_logp, log_nu, mean_length):
+def _prefix_sum(emission):
     n, m = emission.shape
-    l0 = log_q.shape[1]
-    log_mean = np.log(mean_length)
+    prefix = np.zeros((n + 1, m))
+    for position in range(n):
+        for state in range(m):
+            prefix[position + 1, state] = (
+                prefix[position, state] + emission[position, state]
+            )
+    return prefix
+
+
+@njit(cache=True, nogil=True)
+def _forward_messages(prefix, log_q, log_tail, log_survival, log_prior,
+                      mode, row_ptr, col_idx, row_logp,
+                      col_ptr, row_idx, col_logp, log_nu, mean_length):
+    n, m = prefix.shape[0] - 1, prefix.shape[1]
+    l0, log_mean = log_q.shape[1], np.log(mean_length)
     log_denom = np.empty(m)
     for state in range(m):
-        p = np.exp(log_prior[state])
-        log_denom[state] = np.log1p(-p) if mode == _INDEPENDENT_NO_SELF else 0.0
-
-    prefix = np.zeros((n + 1, m))
-    for p in range(n):
-        for s in range(m):
-            prefix[p + 1, s] = prefix[p, s] + emission[p, s]
-
+        log_denom[state] = (
+            np.log1p(-np.exp(log_prior[state]))
+            if mode == _INDEPENDENT_NO_SELF else 0.0
+        )
     scratch = np.empty(m)
-    excluded = np.empty(m)
     work_prefix = np.empty(m + 1)
     work_suffix = np.empty(m + 1)
-
     forward = np.full((n + 1, m), -np.inf)
     incoming = np.full((n + 1, m), -np.inf)
     tail_acc = np.full(m, -np.inf)
@@ -403,60 +620,71 @@ def _partition(emission, log_q, log_tail, log_survival, log_equilibrium,
         eligible = end - l0 - 1
         for state in range(m):
             if eligible >= 1 and log_tail[state] > -np.inf:
-                term = (
-                    incoming[eligible, state]
-                    - prefix[eligible, state]
-                    - eligible * log_tail[state]
+                tail_acc[state] = _logadd(
+                    tail_acc[state],
+                    incoming[eligible, state] - prefix[eligible, state]
+                    - eligible * log_tail[state],
                 )
-                tail_acc[state] = _logadd(tail_acc[state], term)
-
             value = (
                 log_nu[state] + log_survival[state, end]
                 - log_mean + prefix[end, state]
             )
-            max_length = min(l0, end - 1)
-            for length in range(1, max_length + 1):
+            for length in range(1, min(l0, end - 1) + 1):
                 start = end - length
-                if start >= 1 and log_q[state, length - 1] > -np.inf:
+                if log_q[state, length - 1] > -np.inf:
                     value = _logadd(
                         value,
                         incoming[start, state] + log_q[state, length - 1]
                         + prefix[end, state] - prefix[start, state],
                     )
             if tail_acc[state] > -np.inf:
-                tail_const = log_q[state, l0 - 1] - l0 * log_tail[state]
                 value = _logadd(
                     value,
                     prefix[end, state] + end * log_tail[state]
-                    + tail_const + tail_acc[state],
+                    + log_q[state, -1] - l0 * log_tail[state]
+                    + tail_acc[state],
                 )
             forward[end, state] = value
-
         _forward_transition(
             forward[end], incoming[end], mode, log_prior, log_denom,
             col_ptr, row_idx, col_logp, scratch, work_prefix, work_suffix,
         )
+    return forward, incoming
 
+
+@njit(cache=True, nogil=True)
+def _reverse_messages(prefix, log_q, log_tail, log_survival, log_prior,
+                      mode, row_ptr, col_idx, row_logp,
+                      col_ptr, row_idx, col_logp):
+    n, m = prefix.shape[0] - 1, prefix.shape[1]
+    l0 = log_q.shape[1]
+    log_denom = np.empty(m)
+    for state in range(m):
+        log_denom[state] = (
+            np.log1p(-np.exp(log_prior[state]))
+            if mode == _INDEPENDENT_NO_SELF else 0.0
+        )
+    scratch = np.empty(m)
+    work_prefix = np.empty(m + 1)
+    work_suffix = np.empty(m + 1)
     reverse = np.full((n + 1, m), -np.inf)
     outgoing = np.full((n + 1, m), -np.inf)
-    tail_acc[:] = -np.inf
+    tail_acc = np.full(m, -np.inf)
     for start in range(n - 1, -1, -1):
         eligible = start + l0 + 1
         for state in range(m):
             if eligible < n and log_tail[state] > -np.inf:
-                term = (
+                tail_acc[state] = _logadd(
+                    tail_acc[state],
                     prefix[eligible, state] + outgoing[eligible, state]
-                    + eligible * log_tail[state]
+                    + eligible * log_tail[state],
                 )
-                tail_acc[state] = _logadd(tail_acc[state], term)
-
             remaining = n - start
             value = (
                 log_survival[state, remaining]
                 + prefix[n, state] - prefix[start, state]
             )
-            max_length = min(l0, n - start - 1)
-            for length in range(1, max_length + 1):
+            for length in range(1, min(l0, remaining - 1) + 1):
                 end = start + length
                 if log_q[state, length - 1] > -np.inf:
                     value = _logadd(
@@ -466,33 +694,70 @@ def _partition(emission, log_q, log_tail, log_survival, log_equilibrium,
                         + outgoing[end, state],
                     )
             if tail_acc[state] > -np.inf:
-                tail_const = log_q[state, l0 - 1] - l0 * log_tail[state]
                 value = _logadd(
                     value,
-                    tail_const - prefix[start, state]
-                    - start * log_tail[state] + tail_acc[state],
+                    log_q[state, -1] - l0 * log_tail[state]
+                    - prefix[start, state] - start * log_tail[state]
+                    + tail_acc[state],
                 )
             reverse[start, state] = value
-
         _reverse_transition(
             reverse[start], outgoing[start], mode, log_prior, log_denom,
             row_ptr, col_idx, row_logp, scratch, work_prefix, work_suffix,
         )
+    return reverse, outgoing
 
-    log_z = -np.inf
+
+@njit(cache=True, nogil=True)
+def _start_log_partition(prefix, outgoing, log_survival, log_equilibrium,
+                         log_nu, mean_length):
+    n, m = prefix.shape[0] - 1, prefix.shape[1]
+    value = -np.inf
+    log_mean = np.log(mean_length)
     for state in range(m):
-        log_z = _logadd(
-            log_z,
+        value = _logadd(
+            value,
             log_nu[state] + log_equilibrium[state, n]
             - log_mean + prefix[n, state],
         )
-    for start in range(1, n):
-        for state in range(m):
-            log_z = _logadd(
-                log_z,
-                incoming[start, state] + log_survival[state, n - start]
-                + prefix[n, state] - prefix[start, state],
+        for end in range(1, n):
+            value = _logadd(
+                value,
+                log_nu[state] + log_survival[state, end]
+                - log_mean + prefix[end, state] + outgoing[end, state],
             )
+    return value
+
+
+@njit(cache=True, nogil=True)
+def _partition(emission, log_q, log_tail, log_survival, log_equilibrium,
+               log_prior, mode, row_ptr, col_idx, row_logp,
+               col_ptr, row_idx, col_logp, log_nu, mean_length):
+    n, m = emission.shape
+    l0, log_mean = log_q.shape[1], np.log(mean_length)
+    prefix = _prefix_sum(emission)
+    forward, incoming = _forward_messages(
+        prefix, log_q, log_tail, log_survival, log_prior, mode,
+        row_ptr, col_idx, row_logp, col_ptr, row_idx, col_logp,
+        log_nu, mean_length,
+    )
+    reverse, outgoing = _reverse_messages(
+        prefix, log_q, log_tail, log_survival, log_prior, mode,
+        row_ptr, col_idx, row_logp, col_ptr, row_idx, col_logp,
+    )
+    log_z = _start_log_partition(
+        prefix, outgoing, log_survival, log_equilibrium, log_nu, mean_length
+    )
+    log_denom = np.empty(m)
+    for state in range(m):
+        log_denom[state] = (
+            np.log1p(-np.exp(log_prior[state]))
+            if mode == _INDEPENDENT_NO_SELF else 0.0
+        )
+    scratch = np.empty(m)
+    excluded = np.empty(m)
+    work_prefix = np.empty(m + 1)
+    work_suffix = np.empty(m + 1)
 
     scale = np.full(m, -np.inf)
     for state in range(m):
