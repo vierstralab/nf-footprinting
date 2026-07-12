@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 from numba import njit
@@ -65,6 +65,33 @@ class Segmentation:
     posterior: GridPosterior
     boundary: np.ndarray
     log_partition: np.ndarray
+    _sampler: "_SegmentationSampler | None" = field(
+        default=None, repr=False, compare=False
+    )
+
+    def sample(
+        self,
+        n_draws: int = 1,
+        rng: np.random.Generator | None = None,
+    ) -> dict[str, tuple["SegmentationPath", ...]]:
+        """Draw independent exact paths from the fitted posterior."""
+        if self._sampler is None:
+            raise RuntimeError(
+                "sampling is unavailable after loading a summary-only NPZ"
+            )
+        return self._sampler.sample(n_draws, rng)
+
+    def sample_prior(
+        self,
+        n_draws: int = 1,
+        rng: np.random.Generator | None = None,
+    ) -> dict[str, tuple["SegmentationPath", ...]]:
+        """Draw stationary finite-window paths from the fitted prior."""
+        if self._sampler is None:
+            raise RuntimeError(
+                "sampling is unavailable after loading a summary-only NPZ"
+            )
+        return self._sampler.sample_prior(n_draws, rng)
 
     def to_npz(self, path) -> None:
         np.savez_compressed(
@@ -110,103 +137,81 @@ def segment(
     transition_sd: float | None = None,
     forbid_same_state: bool = True,
 ) -> Segmentation:
-    """Exactly marginalize segmentations on a shared finite state grid."""
-    loglik, state_x = _track_inputs(loglik, state_x, names)
-    g, n, m = loglik.shape
-    log_state_prior = _normalize_track_prior(log_state_prior, g, m)
-    log_length, log_tail = length_prior.for_states(m)
-    mean_length, log_survival, log_equilibrium = _length_terms(log_length, log_tail, n)
-
-    def run_track(i):
-        model = _transition_model(
-            state_x, log_state_prior[i], transition_sd, forbid_same_state
-        )
-        stationary_mean = float(np.exp(model[-1]) @ mean_length)
-        return _partition(
-            np.ascontiguousarray(loglik[i]), log_length, log_tail,
-            log_survival, log_equilibrium, log_state_prior[i],
-            *model[:-1], model[-1], stationary_mean,
-        )
-
-    results = [run_track(0)]
-    if g > 1:
-        with ThreadPoolExecutor(max_workers=min(g - 1, 32)) as pool:
-            results.extend(pool.map(run_track, range(1, g)))
-    z, posterior, boundary = map(np.asarray, zip(*results))
-    return Segmentation(names, GridPosterior(state_x, posterior), boundary, z)
-
-
-def sample_posterior_segmentations(
-    loglik: np.ndarray,
-    state_x: np.ndarray,
-    names: tuple[str, ...],
-    length_prior: LengthPrior,
-    log_state_prior: np.ndarray,
-    n_draws: int = 1,
-    transition_sd: float | None = None,
-    forbid_same_state: bool = True,
-    rng: np.random.Generator | None = None,
-) -> dict[str, tuple["SegmentationPath", ...]]:
-    """Draw independent exact posterior paths by stochastic traceback."""
-    if n_draws < 1:
-        raise ValueError("n_draws must be positive")
+    """Exactly marginalize segmentations and retain traceback messages."""
     loglik, state_x = _track_inputs(loglik, state_x, names)
     g, n, m = loglik.shape
     prior = _normalize_track_prior(log_state_prior, g, m)
     log_q, log_tail = length_prior.for_states(m)
     mean, survival, equilibrium = _length_terms(log_q, log_tail, n)
-    rng = np.random.default_rng() if rng is None else rng
 
-    def prepare(i):
-        model = _transition_model(state_x, prior[i], transition_sd, forbid_same_state)
-        prefix = _prefix_sum(np.ascontiguousarray(loglik[i]))
-        reverse, outgoing = _reverse_messages(
-            prefix, log_q, log_tail, survival, prior[i], *model[:-1]
+    def run_track(i):
+        model = _transition_model(
+            state_x, prior[i], transition_sd, forbid_same_state
         )
-        return model, prefix, reverse, outgoing
+        stationary_mean = float(np.exp(model[-1]) @ mean)
+        z, posterior, boundary, prefix, reverse = _partition(
+            np.ascontiguousarray(loglik[i]), log_q, log_tail,
+            survival, equilibrium, prior[i], *model[:-1], model[-1],
+            stationary_mean,
+        )
+        return z, posterior, boundary, (model, prefix, reverse)
 
-    prepared = [prepare(0)]
+    results = [run_track(0)]
     if g > 1:
         with ThreadPoolExecutor(max_workers=min(g - 1, 32)) as pool:
-            prepared.extend(pool.map(prepare, range(1, g)))
-    return {
-        name: _posterior_paths(state_x, prior[i], log_q, log_tail, survival,
-                               equilibrium, mean, *prepared[i], n_draws, rng)
-        for i, name in enumerate(names)
-    }
+            results.extend(pool.map(run_track, range(1, g)))
+    z = np.asarray([x[0] for x in results])
+    posterior = np.asarray([x[1] for x in results])
+    boundary = np.asarray([x[2] for x in results])
+    sampler = _SegmentationSampler(
+        state_x, names, prior, log_q, log_tail, survival, equilibrium, mean,
+        tuple(x[3] for x in results),
+    )
+    return Segmentation(
+        names, GridPosterior(state_x, posterior), boundary, z, sampler
+    )
 
 
-def sample_prior_segmentations(
-    n_positions: int,
-    state_x: np.ndarray,
-    names: tuple[str, ...],
-    length_prior: LengthPrior,
-    log_state_prior: np.ndarray,
-    n_draws: int = 1,
-    transition_sd: float | None = None,
-    forbid_same_state: bool = True,
-    rng: np.random.Generator | None = None,
-) -> dict[str, tuple["SegmentationPath", ...]]:
-    """Draw stationary finite-window segmentations from the model prior."""
-    if n_positions < 1 or n_draws < 1:
-        raise ValueError("n_positions and n_draws must be positive")
-    state_x = np.asarray(state_x, dtype=float)
-    if state_x.ndim != 1 or state_x.size < 1 or len(names) < 1:
-        raise ValueError("state_x and names must be nonempty")
-    m = state_x.size
-    prior = _normalize_track_prior(log_state_prior, len(names), m)
-    log_q, log_tail = length_prior.for_states(m)
-    mean, survival, equilibrium = _length_terms(log_q, log_tail, n_positions)
-    rng = np.random.default_rng() if rng is None else rng
-    result = {}
-    for i, name in enumerate(names):
-        model = _transition_model(state_x, prior[i], transition_sd, forbid_same_state)
-        result[name] = _prior_paths(
-            state_x, prior[i], log_q, log_tail, survival, equilibrium, mean,
-            model, n_positions, n_draws, rng,
-        )
-    return result
+@dataclass(frozen=True, slots=True)
+class _SegmentationSampler:
+    state_x: np.ndarray
+    names: tuple[str, ...]
+    prior: np.ndarray
+    log_q: np.ndarray
+    log_tail: np.ndarray
+    survival: np.ndarray
+    equilibrium: np.ndarray
+    mean: np.ndarray
+    tracks: tuple[tuple, ...]
 
+    def sample(self, n_draws=1, rng=None):
+        if n_draws < 1:
+            raise ValueError("n_draws must be positive")
+        rng = np.random.default_rng() if rng is None else rng
+        result = {}
+        for i, name in enumerate(self.names):
+            model, prefix, reverse = self.tracks[i]
+            outgoing = _outgoing_messages(reverse, self.prior[i], *model[:-1])
+            result[name] = _posterior_paths(
+                self.state_x, self.prior[i], self.log_q, self.log_tail,
+                self.survival, self.equilibrium, self.mean, model, prefix,
+                reverse, outgoing, n_draws, rng,
+            )
+        return result
+
+    def sample_prior(self, n_draws=1, rng=None):
+        if n_draws < 1:
+            raise ValueError("n_draws must be positive")
+        rng = np.random.default_rng() if rng is None else rng
+        n = self.tracks[0][1].shape[0] - 1
+        return {
+            name: _prior_paths(
+                self.state_x, self.prior[i], self.log_q, self.log_tail,
+                self.survival, self.equilibrium, self.mean,
+                self.tracks[i][0], n, n_draws, rng,
+            )
+            for i, name in enumerate(self.names)
+        }
 
 def _track_inputs(loglik, state_x, names):
     loglik = np.asarray(loglik, dtype=float)
@@ -555,6 +560,26 @@ def _reverse_transition(values, out, mode, log_prior, log_denom,
             for j in range(row_ptr[source], row_ptr[source + 1]):
                 value = _logadd(value, row_logp[j] + values[col_idx[j]])
             out[source] = value
+
+
+@njit(cache=True, nogil=True)
+def _outgoing_messages(reverse, log_prior, mode, row_ptr, col_idx, row_logp,
+                       col_ptr, row_idx, col_logp):
+    n, m = reverse.shape
+    log_denom = np.zeros(m)
+    if mode == _INDEPENDENT_NO_SELF:
+        for state in range(m):
+            log_denom[state] = np.log1p(-np.exp(log_prior[state]))
+    outgoing = np.full((n, m), -np.inf)
+    scratch = np.empty(m)
+    work_prefix = np.empty(m + 1)
+    work_suffix = np.empty(m + 1)
+    for position in range(n):
+        _reverse_transition(
+            reverse[position], outgoing[position], mode, log_prior, log_denom,
+            row_ptr, col_idx, row_logp, scratch, work_prefix, work_suffix,
+        )
+    return outgoing
 
 
 @njit(cache=True)
@@ -909,4 +934,4 @@ def _partition(emission, log_q, log_tail, log_survival, log_equilibrium,
             work_prefix, work_suffix,
         )
         boundary[b - 1] = min(1.0, np.exp(value - log_z))
-    return log_z, log_posterior, boundary
+    return log_z, log_posterior, boundary, prefix, reverse

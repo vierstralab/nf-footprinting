@@ -1,11 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 from scipy.special import logsumexp
 
 from .config import DEFAULT_ETA_SEGMENTATION, EtaSegmentationConfig
 from .posterior import GridPosterior, normalize_log_mass
-from .segmentation import LengthPrior, segment
+from .segmentation import LengthPrior, Segmentation, segment
 from .variance_ratio import VarianceRatioLikelihood
 
 
@@ -17,6 +17,21 @@ class EtaSegmentation:
     icc: GridPosterior
     boundary: np.ndarray
     log_partition: float
+    _base: Segmentation | None = field(default=None, repr=False, compare=False)
+
+    def sample(self, n_draws=1, rng=None):
+        if self._base is None:
+            raise RuntimeError(
+                "sampling is unavailable after loading a summary-only NPZ"
+            )
+        return self._base.sample(n_draws, rng)
+
+    def sample_prior(self, n_draws=1, rng=None):
+        if self._base is None:
+            raise RuntimeError(
+                "sampling is unavailable after loading a summary-only NPZ"
+            )
+        return self._base.sample_prior(n_draws, rng)
 
     def to_npz(self, path) -> None:
         np.savez_compressed(
@@ -67,7 +82,7 @@ def fit_eta_segmentation(
     base = segment(
         emission,
         likelihood.icc_x,
-        ("eta",),
+        ("icc",),
         length_prior,
         eta_prior,
         config.transition_sd,
@@ -87,6 +102,7 @@ def fit_eta_segmentation(
         GridPosterior(likelihood.icc_x, log_icc),
         base.boundary[0],
         float(base.log_partition[0]),
+        base,
     )
 
 
