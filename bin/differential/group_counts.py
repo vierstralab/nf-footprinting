@@ -7,19 +7,23 @@ from scipy.special import logsumexp, ndtr
 
 from .differential import Differential
 from .integration import gaussian_summary
+from .config import (
+    DEFAULT_SOFT_FOOTPRINT_SEGMENTATION,
+    SoftFootprintSegmentationConfig,
+)
 from .posterior import GridPosterior, normalize_log_mass
+from .segmentation import LengthPrior, Segmentation, segment
 from .variance_ratio import VarianceRatioLikelihood
 
 
 @dataclass(frozen=True, slots=True)
 class SoftFootprintCount:
-    """Posterior-predictive footprint prevalence and expected group count."""
+    """Exact posterior moments of predictive group footprint prevalence."""
 
     group_names: tuple[str, ...]
     prevalence: np.ndarray
+    prevalence_variance: np.ndarray
     threshold: float
-    model_sd: float
-    method: str
 
     @property
     def mean(self) -> np.ndarray:
@@ -37,18 +41,10 @@ class SoftFootprintCount:
 def infer_ksoft(
     differential: Differential,
     threshold: float = 0.0,
-    model_sd: float = 0.0,
-    method: str = "exact",
     log_mu_prior: np.ndarray | None = None,
     position_chunk_size: int = 64,
 ) -> SoftFootprintCount:
-    """Expected number of groups with predictive signal below ``threshold``.
-
-    For each group, prevalence is ``P(theta_new < threshold | data)`` under
-    ``theta_new ~ N(mu, sigma2 + model_sd**2)``.
-    """
-    if model_sd < 0:
-        raise ValueError("model_sd must be nonnegative")
+    """Exact moments of ``P(theta_new < threshold | data)`` by group."""
     if position_chunk_size < 1:
         raise ValueError("position_chunk_size must be positive")
     prior = (
@@ -58,9 +54,10 @@ def infer_ksoft(
     )
     kernel = ndtr(
         (threshold - differential.mu_x[:, None])
-        / np.sqrt(differential.sig2_x[None] + model_sd**2)
+        / np.sqrt(differential.sig2_x[None])
     )
     prevalence = np.empty(differential.loglik_mu.shape[:2])
+    variance = np.empty_like(prevalence)
 
     for lo in range(0, prevalence.shape[1], position_chunk_size):
         hi = min(lo + position_chunk_size, prevalence.shape[1])
@@ -69,32 +66,56 @@ def infer_ksoft(
             + prior[None, None, :, None]
             + differential.log_sig2_prior[:, None, None]
         )
-        if method == "exact":
-            denominator = logsumexp(joint, axis=(2, 3))
-            numerator = logsumexp(
-                joint, axis=(2, 3), b=kernel[None, None]
-            )
-            prevalence[:, lo:hi] = np.exp(numerator - denominator)
-        elif method == "gaussian":
-            joint -= logsumexp(joint, axis=(2, 3), keepdims=True)
-            mass = np.exp(joint)
-            mu = np.sum(mass * differential.mu_x[None, None, :, None], axis=(2, 3))
-            variance = np.sum(
-                mass
-                * (
-                    differential.sig2_x[None, None, None]
-                    + (differential.mu_x[None, None, :, None] - mu[:, :, None, None]) ** 2
-                ),
-                axis=(2, 3),
-            )
-            prevalence[:, lo:hi] = ndtr(
-                (threshold - mu) / np.sqrt(variance + model_sd**2)
-            )
-        else:
-            raise ValueError("method must be 'exact' or 'gaussian'")
+        denominator = logsumexp(joint, axis=(2, 3))
+        mean = np.exp(
+            logsumexp(joint, axis=(2, 3), b=kernel[None, None])
+            - denominator
+        )
+        second = np.exp(
+            logsumexp(joint, axis=(2, 3), b=(kernel * kernel)[None, None])
+            - denominator
+        )
+        prevalence[:, lo:hi] = mean
+        variance[:, lo:hi] = np.maximum(second - mean * mean, 0.0)
 
     return SoftFootprintCount(
-        differential.group_names, prevalence, threshold, model_sd, method
+        differential.group_names, prevalence, variance, threshold
+    )
+
+
+def fit_ksoft_segmentation(
+    ksoft: SoftFootprintCount,
+    length_prior: LengthPrior,
+    config: SoftFootprintSegmentationConfig = DEFAULT_SOFT_FOOTPRINT_SEGMENTATION,
+) -> Segmentation:
+    """Segment mean predictive prevalence after integrating group dispersion."""
+    prevalence_x = config.prevalence_x()
+    variance_x = config.variance_x()
+    floor = np.diff(prevalence_x)[0] ** 2 / 12
+    observation_variance = np.maximum(ksoft.prevalence_variance, floor)
+    n_position = ksoft.prevalence.shape[1]
+    loglik = np.empty((n_position, prevalence_x.size, variance_x.size))
+
+    for i, extra_variance in enumerate(variance_x):
+        variance = observation_variance + extra_variance
+        loglik[:, :, i] = -0.5 * np.sum(
+            np.log(2 * np.pi * variance)[:, :, None]
+            + (ksoft.prevalence[:, :, None] - prevalence_x) ** 2
+            / variance[:, :, None],
+            axis=0,
+        )
+
+    emission = logsumexp(loglik, axis=2) - np.log(variance_x.size)
+    state_x = len(ksoft.group_names) * prevalence_x
+    log_prior = np.full(state_x.size, -np.log(state_x.size))
+    return segment(
+        emission,
+        state_x,
+        ("ksoft",),
+        length_prior,
+        log_prior,
+        config.transition_sd,
+        config.forbid_same_state,
     )
 
 

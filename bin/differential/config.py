@@ -116,6 +116,30 @@ class CoefficientSegmentationConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class SoftFootprintSegmentationConfig:
+    n_prevalence: int = 101
+    variance_min: float = 1e-4
+    variance_max: float = 0.25
+    n_variance: int = 41
+    include_zero_variance: bool = True
+    transition_sd: float | None = None
+    forbid_same_state: bool = True
+
+    def __post_init__(self) -> None:
+        if self.n_prevalence < 2 or self.n_variance < 1:
+            raise ValueError("prevalence and variance grids must be nonempty")
+        if not 0 < self.variance_min <= self.variance_max <= 0.25:
+            raise ValueError("variance grid must lie in (0, 0.25]")
+
+    def prevalence_x(self) -> np.ndarray:
+        return np.linspace(0.0, 1.0, self.n_prevalence)
+
+    def variance_x(self) -> np.ndarray:
+        x = np.geomspace(self.variance_min, self.variance_max, self.n_variance)
+        return np.r_[0.0, x] if self.include_zero_variance else x
+
+
+@dataclass(frozen=True, slots=True)
 class MeanSegmentationConfig:
     transition_sd: float | None = None
     forbid_same_state: bool = False
@@ -128,4 +152,5 @@ DEFAULT_COEFFICIENT = CoefficientConfig()
 DEFAULT_THETA_SEGMENTATION = ThetaSegmentationConfig()
 DEFAULT_ETA_SEGMENTATION = EtaSegmentationConfig()
 DEFAULT_COEFFICIENT_SEGMENTATION = CoefficientSegmentationConfig()
+DEFAULT_SOFT_FOOTPRINT_SEGMENTATION = SoftFootprintSegmentationConfig()
 DEFAULT_MEAN_SEGMENTATION = MeanSegmentationConfig()

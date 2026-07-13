@@ -7,13 +7,19 @@ from .config import (
     DEFAULT_DIFFERENTIAL,
     DEFAULT_ETA_SEGMENTATION,
     DEFAULT_MEAN_SEGMENTATION,
+    DEFAULT_SOFT_FOOTPRINT_SEGMENTATION,
     DEFAULT_THETA,
     DEFAULT_THETA_SEGMENTATION,
     DEFAULT_VARIANCE_RATIO,
 )
 from .differential import DifferentialModel, fit_group_means_segmentation
 from .eta import fit_eta_segmentation
-from .group_counts import infer_kdev, infer_kfp, infer_ksoft
+from .group_counts import (
+    fit_ksoft_segmentation,
+    infer_kdev,
+    infer_kfp,
+    infer_ksoft,
+)
 from .theta import ThetaModel, fit_theta_segmentation
 from .variance_ratio import VarianceRatioModel, fit_mu0_segmentation
 
@@ -156,18 +162,27 @@ class SoftFootprintCountLoader(PlotDataLoader):
         self,
         data,
         threshold=0.0,
-        model_sd=0.0,
-        method="exact",
         log_mu_prior=None,
         position_chunk_size=64,
     ):
         data.ksoft = infer_ksoft(
             data.differential,
             threshold,
-            model_sd,
-            method,
             log_mu_prior,
             position_chunk_size,
+        )
+        return data
+
+
+class SoftFootprintSegmentationLoader(PlotDataLoader):
+    def _load(
+        self,
+        data,
+        length_prior,
+        config=DEFAULT_SOFT_FOOTPRINT_SEGMENTATION,
+    ):
+        data.ksoft_segmentation = fit_ksoft_segmentation(
+            data.ksoft, length_prior, config
         )
         return data
 
