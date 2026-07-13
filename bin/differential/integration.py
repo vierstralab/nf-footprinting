@@ -84,20 +84,6 @@ def coefficient_target_terms(
     raise ValueError("method must be 'gaussian' or 'exact'")
 
 
-def leave_one_out_reference(group_terms: np.ndarray, log_eta_prior: np.ndarray) -> np.ndarray:
-    g = group_terms.shape[0]
-    out = np.empty(group_terms.shape[:3])
-    for target in range(g):
-        finite = np.isfinite(group_terms)
-        total = np.where(finite, group_terms, 0.0).sum(axis=0)
-        invalid = (~finite).sum(axis=0)
-        target_finite = finite[target]
-        summed = total - np.where(target_finite, group_terms[target], 0.0)
-        summed = np.where(invalid - (~target_finite) == 0, summed, -np.inf)
-        out[target] = logsumexp(summed + log_eta_prior[None, None], axis=2)
-    return out
-
-
 def _variance_ratio_gaussian(data, mu0_x, ratio_x, variance_floor):
     s = gaussian_summary(data, variance_floor)
     g, n = s.mu.shape

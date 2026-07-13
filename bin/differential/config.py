@@ -86,9 +86,6 @@ class CoefficientConfig:
     z_min: float = -4.0
     z_max: float = 4.0
     z_step: float = 0.25
-    method: IntegrationMethod = "gaussian"
-    zero_mass: float | None = 0.25
-    z_prior_sd: float = 1.5
 
     def z_x(self) -> np.ndarray:
         x = np.arange(

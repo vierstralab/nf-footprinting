@@ -2,7 +2,6 @@ from .coefficients import (
     CoefficientLikelihood,
     CoefficientModel,
     fit_coefficient_segmentation,
-    make_z_log_prior,
 )
 from .config import *
 from .differential import (
@@ -55,6 +54,5 @@ __all__ = [
     "infer_kdev",
     "CoefficientLikelihood",
     "CoefficientModel",
-    "make_z_log_prior",
     "fit_coefficient_segmentation",
 ]

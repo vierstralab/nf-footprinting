@@ -108,14 +108,12 @@ class CoefficientLikelihoodLoader(PlotDataLoader):
         config=DEFAULT_COEFFICIENT,
         log_mu0_prior=None,
         log_eta_prior=None,
-        log_z_prior=None,
     ):
         data.group_coefficient_likelihood = CoefficientModel(config).fit(
             data.differential,
             data.variance_ratio,
             log_mu0_prior,
             log_eta_prior,
-            log_z_prior,
         )
         return data
 
@@ -126,13 +124,11 @@ class CoefficientSegmentationLoader(PlotDataLoader):
         data,
         length_prior,
         config=DEFAULT_COEFFICIENT_SEGMENTATION,
-        log_z_prior=None,
     ):
         data.group_coefficient_segmentation = fit_coefficient_segmentation(
             data.group_coefficient_likelihood,
             length_prior,
             config,
-            log_z_prior,
         )
         return data
 

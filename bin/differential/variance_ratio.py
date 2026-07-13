@@ -34,6 +34,8 @@ class VarianceRatioLikelihood:
     loglik: np.ndarray
     log_mu0_prior: np.ndarray
     log_eta_prior: np.ndarray
+    method: str = "gaussian"
+    variance_floor: float | None = None
 
     @property
     def ratio_x(self) -> np.ndarray:
@@ -94,6 +96,10 @@ class VarianceRatioLikelihood:
             loglik=self.loglik,
             log_mu0_prior=self.log_mu0_prior,
             log_eta_prior=self.log_eta_prior,
+            method=self.method,
+            variance_floor=(
+                np.nan if self.variance_floor is None else self.variance_floor
+            ),
         )
 
     @classmethod
@@ -106,6 +112,12 @@ class VarianceRatioLikelihood:
                 x["loglik"],
                 x["log_mu0_prior"],
                 x["log_eta_prior"],
+                str(x["method"].item()) if "method" in x else "gaussian",
+                (
+                    None
+                    if "variance_floor" not in x or np.isnan(x["variance_floor"].item())
+                    else float(x["variance_floor"].item())
+                ),
             )
 
 
@@ -145,6 +157,8 @@ class VarianceRatioModel:
             group_terms.sum(axis=0),
             mu0_prior,
             eta_prior,
+            self.config.method,
+            self.config.variance_floor,
         )
 
 

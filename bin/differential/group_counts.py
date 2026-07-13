@@ -106,6 +106,8 @@ def infer_kdev(
         else normalize_log_mass(log_eta_prior, variance_ratio.eta_x.size)
     )
 
+    if variance_floor is None:
+        variance_floor = variance_ratio.variance_floor
     summary = gaussian_summary(differential, variance_floor)
     ratio_x = variance_ratio.ratio_x
     n_group, n_position = summary.mu.shape

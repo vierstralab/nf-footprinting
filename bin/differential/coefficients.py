@@ -10,35 +10,26 @@ from .config import (
     CoefficientSegmentationConfig,
 )
 from .differential import Differential
-from .integration import (
-    coefficient_target_terms,
-    leave_one_out_reference,
-    variance_ratio_group_terms,
-)
-from .posterior import (
-    GridPosterior,
-    normal_grid_log_mass,
-    normalize_log_mass,
-    spike_slab_log_mass,
-)
+from .integration import coefficient_target_terms, variance_ratio_group_terms
+from .posterior import GridPosterior, normal_grid_log_mass, normalize_log_mass
 from .segmentation import LengthPrior, Segmentation, segment
 from .variance_ratio import VarianceRatioLikelihood
 
 
 @dataclass(frozen=True, slots=True)
 class CoefficientLikelihood:
+    """Common-reference standardized group effects ``(mu_g - mu0) / sigma_g``."""
+
     group_names: tuple[str, ...]
     z_x: np.ndarray
     loglik: np.ndarray
     log_z_prior: np.ndarray
 
-    def posterior(self, log_z_prior: np.ndarray | None = None) -> GridPosterior:
-        prior = (
-            self.log_z_prior
-            if log_z_prior is None
-            else normalize_log_mass(log_z_prior, self.z_x.size)
+    def posterior(self) -> GridPosterior:
+        return GridPosterior(
+            self.z_x,
+            self.loglik + self.log_z_prior[None, None],
         )
-        return GridPosterior(self.z_x, self.loglik + prior[None, None, :])
 
     def to_npz(self, path) -> None:
         np.savez_compressed(
@@ -70,8 +61,10 @@ class CoefficientModel:
         variance_ratio: VarianceRatioLikelihood,
         log_mu0_prior: np.ndarray | None = None,
         log_eta_prior: np.ndarray | None = None,
-        log_z_prior: np.ndarray | None = None,
     ) -> CoefficientLikelihood:
+        if differential.group_names != variance_ratio.group_names:
+            raise ValueError("differential and variance-ratio group names differ")
+
         mu0_prior = (
             variance_ratio.log_mu0_prior
             if log_mu0_prior is None
@@ -83,71 +76,106 @@ class CoefficientModel:
             else normalize_log_mass(log_eta_prior, variance_ratio.eta_x.size)
         )
         z_x = self.config.z_x()
-        z_prior = (
-            make_z_log_prior(z_x, self.config)
-            if log_z_prior is None
-            else normalize_log_mass(log_z_prior, z_x.size)
+        log_z_given_eta = _z_given_eta_log_mass(z_x, variance_ratio.eta_x)
+        log_z_prior = logsumexp(
+            eta_prior[:, None] + log_z_given_eta,
+            axis=0,
         )
+        log_z_prior -= logsumexp(log_z_prior)
+
         group_terms = variance_ratio_group_terms(
             differential,
             variance_ratio.mu0_x,
             variance_ratio.eta_x,
-            self.config.method,
+            variance_ratio.method,
+            variance_ratio.variance_floor,
         )
-        reference = leave_one_out_reference(group_terms, eta_prior)
         target = coefficient_target_terms(
             differential,
             variance_ratio.mu0_x,
             z_x,
-            self.config.method,
+            variance_ratio.method,
+            variance_ratio.variance_floor,
         )
-        loglik = logsumexp(
-            reference[:, :, :, None]
-            + target
-            + mu0_prior[None, None, :, None],
-            axis=2,
+        loglik = _common_reference_loglik(
+            group_terms,
+            target,
+            mu0_prior,
+            eta_prior,
+            log_z_given_eta,
+            log_z_prior,
         )
         return CoefficientLikelihood(
             differential.group_names,
             z_x,
             loglik,
-            z_prior,
+            log_z_prior,
         )
 
 
-def make_z_log_prior(
-    z_x: np.ndarray,
-    config: CoefficientConfig = DEFAULT_COEFFICIENT,
+def _z_given_eta_log_mass(z_x: np.ndarray, eta_x: np.ndarray) -> np.ndarray:
+    zero = np.flatnonzero(z_x == 0.0)
+    if zero.size != 1:
+        raise ValueError("z grid must contain exactly one zero state")
+    out = np.full((eta_x.size, z_x.size), -np.inf)
+    for i, eta in enumerate(eta_x):
+        if np.isneginf(eta):
+            out[i, zero[0]] = 0.0
+        else:
+            out[i] = normal_grid_log_mass(z_x, 0.0, np.exp(eta / 2))
+    return out
+
+
+def _common_reference_loglik(
+    group_terms: np.ndarray,
+    target: np.ndarray,
+    mu0_prior: np.ndarray,
+    eta_prior: np.ndarray,
+    log_z_given_eta: np.ndarray,
+    log_z_prior: np.ndarray,
 ) -> np.ndarray:
-    if config.zero_mass is None:
-        return normal_grid_log_mass(z_x, 0.0, config.z_prior_sd)
-    zero = int(np.flatnonzero(z_x == 0.0)[0])
-    return spike_slab_log_mass(
-        z_x,
-        zero,
-        config.zero_mass,
-        0.0,
-        config.z_prior_sd,
-    )
+    finite = np.isfinite(group_terms)
+    total = np.where(finite, group_terms, 0.0).sum(axis=0)
+    invalid = (~finite).sum(axis=0)
+    z_given_eta = np.exp(log_z_given_eta)
+    out = np.empty(target.shape[:2] + (target.shape[-1],))
+
+    for g in range(group_terms.shape[0]):
+        other = total - np.where(finite[g], group_terms[g], 0.0)
+        other = np.where(invalid - (~finite[g]) == 0, other, -np.inf)
+        reference = _mix_eta(other + eta_prior[None, None], z_given_eta)
+        joint = logsumexp(
+            reference + target[g] + mu0_prior[None, :, None],
+            axis=1,
+        )
+        out[g] = joint - log_z_prior[None]
+    return out
+
+
+def _mix_eta(log_weight: np.ndarray, conditional_mass: np.ndarray) -> np.ndarray:
+    maximum = np.max(log_weight, axis=-1)
+    valid = np.isfinite(maximum)
+    scaled = np.zeros_like(log_weight)
+    scaled[valid] = np.exp(log_weight[valid] - maximum[valid, None])
+    mass = scaled.reshape(-1, scaled.shape[-1]) @ conditional_mass
+    with np.errstate(divide="ignore"):
+        out = np.log(mass).reshape(maximum.shape + (conditional_mass.shape[1],))
+    out[valid] += maximum[valid, None]
+    out[~valid] = -np.inf
+    return out
 
 
 def fit_coefficient_segmentation(
     likelihood: CoefficientLikelihood,
     length_prior: LengthPrior,
     config: CoefficientSegmentationConfig = DEFAULT_COEFFICIENT_SEGMENTATION,
-    log_z_prior: np.ndarray | None = None,
 ) -> Segmentation:
-    prior = (
-        likelihood.log_z_prior
-        if log_z_prior is None
-        else normalize_log_mass(log_z_prior, likelihood.z_x.size)
-    )
     return segment(
         likelihood.loglik,
         likelihood.z_x,
         likelihood.group_names,
         length_prior,
-        prior,
+        likelihood.log_z_prior,
         config.transition_sd,
         config.forbid_same_state,
     )
