@@ -7,12 +7,7 @@ from scipy.special import logsumexp, ndtr
 
 from .differential import Differential
 from .integration import gaussian_summary
-from .config import (
-    DEFAULT_SOFT_FOOTPRINT_SEGMENTATION,
-    SoftFootprintSegmentationConfig,
-)
 from .posterior import GridPosterior, normalize_log_mass
-from .segmentation import LengthPrior, Segmentation, segment
 from .variance_ratio import VarianceRatioLikelihood
 
 
@@ -82,41 +77,6 @@ def infer_ksoft(
         differential.group_names, prevalence, variance, threshold
     )
 
-
-def fit_ksoft_segmentation(
-    ksoft: SoftFootprintCount,
-    length_prior: LengthPrior,
-    config: SoftFootprintSegmentationConfig = DEFAULT_SOFT_FOOTPRINT_SEGMENTATION,
-) -> Segmentation:
-    """Segment mean predictive prevalence after integrating group dispersion."""
-    prevalence_x = config.prevalence_x()
-    variance_x = config.variance_x()
-    floor = np.diff(prevalence_x)[0] ** 2 / 12
-    observation_variance = np.maximum(ksoft.prevalence_variance, floor)
-    n_position = ksoft.prevalence.shape[1]
-    loglik = np.empty((n_position, prevalence_x.size, variance_x.size))
-
-    for i, extra_variance in enumerate(variance_x):
-        variance = observation_variance + extra_variance
-        loglik[:, :, i] = -0.5 * np.sum(
-            np.log(2 * np.pi * variance)[:, :, None]
-            + (ksoft.prevalence[:, :, None] - prevalence_x) ** 2
-            / variance[:, :, None],
-            axis=0,
-        )
-
-    emission = logsumexp(loglik, axis=2) - np.log(variance_x.size)
-    state_x = len(ksoft.group_names) * prevalence_x
-    log_prior = np.full(state_x.size, -np.log(state_x.size))
-    return segment(
-        emission,
-        state_x,
-        ("ksoft",),
-        length_prior,
-        log_prior,
-        config.transition_sd,
-        config.forbid_same_state,
-    )
 
 
 def binary_count_log_evidence(

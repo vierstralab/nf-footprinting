@@ -1,6 +1,7 @@
 from .coefficients import (
     CoefficientLikelihood,
-    CoefficientModel,
+    CommonCoefficientModel,
+    ZeroCoefficientModel,
     fit_coefficient_segmentation,
 )
 from .config import *
@@ -13,7 +14,6 @@ from .differential import (
 from .eta import EtaSegmentation, fit_eta_segmentation
 from .group_counts import (
     SoftFootprintCount,
-    fit_ksoft_segmentation,
     infer_kdev,
     infer_kfp,
     infer_ksoft,
@@ -59,9 +59,9 @@ __all__ = [
     "SoftFootprintCount",
     "infer_kfp",
     "infer_ksoft",
-    "fit_ksoft_segmentation",
     "infer_kdev",
     "CoefficientLikelihood",
-    "CoefficientModel",
+    "CommonCoefficientModel",
+    "ZeroCoefficientModel",
     "fit_coefficient_segmentation",
 ]

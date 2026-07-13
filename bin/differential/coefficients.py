@@ -18,18 +18,14 @@ from .variance_ratio import VarianceRatioLikelihood
 
 @dataclass(frozen=True, slots=True)
 class CoefficientLikelihood:
-    """Common-reference standardized group effects ``(mu_g - mu0) / sigma_g``."""
-
     group_names: tuple[str, ...]
     z_x: np.ndarray
     loglik: np.ndarray
     log_z_prior: np.ndarray
+    reference: str
 
     def posterior(self) -> GridPosterior:
-        return GridPosterior(
-            self.z_x,
-            self.loglik + self.log_z_prior[None, None],
-        )
+        return GridPosterior(self.z_x, self.loglik + self.log_z_prior[None, None])
 
     def to_npz(self, path) -> None:
         np.savez_compressed(
@@ -38,20 +34,32 @@ class CoefficientLikelihood:
             z_x=self.z_x,
             loglik=self.loglik,
             log_z_prior=self.log_z_prior,
+            reference=np.array(self.reference),
         )
 
     @classmethod
     def from_npz(cls, path) -> "CoefficientLikelihood":
         with np.load(path, allow_pickle=False) as x:
+            if "reference" not in x.files:
+                reference = "mu0"
+            elif x["reference"].dtype.kind in "fiu":
+                reference = "zero" if float(x["reference"]) == 0 else "unknown"
+            else:
+                reference = str(x["reference"])
+            if reference not in ("mu0", "zero"):
+                raise ValueError("unknown coefficient reference")
             return cls(
                 tuple(x["group_names"].tolist()),
                 x["z_x"],
                 x["loglik"],
                 x["log_z_prior"],
+                reference,
             )
 
 
-class CoefficientModel:
+class CommonCoefficientModel:
+    """Group effects relative to the shared mean: ``(mu_g - mu0) / sigma_g``."""
+
     def __init__(self, config: CoefficientConfig = DEFAULT_COEFFICIENT):
         self.config = config
 
@@ -77,10 +85,7 @@ class CoefficientModel:
         )
         z_x = self.config.z_x()
         log_z_given_eta = _z_given_eta_log_mass(z_x, variance_ratio.eta_x)
-        log_z_prior = logsumexp(
-            eta_prior[:, None] + log_z_given_eta,
-            axis=0,
-        )
+        log_z_prior = logsumexp(eta_prior[:, None] + log_z_given_eta, axis=0)
         log_z_prior -= logsumexp(log_z_prior)
 
         group_terms = variance_ratio_group_terms(
@@ -110,6 +115,40 @@ class CoefficientModel:
             z_x,
             loglik,
             log_z_prior,
+            "mu0",
+        )
+
+
+class ZeroCoefficientModel:
+    """Group effects relative to zero: ``mu_g / sigma_g``."""
+
+    def __init__(self, config: CoefficientConfig = DEFAULT_COEFFICIENT):
+        self.config = config
+
+    def fit(
+        self,
+        differential: Differential,
+        log_z_prior: np.ndarray | None = None,
+    ) -> CoefficientLikelihood:
+        z_x = self.config.z_x()
+        prior = (
+            normal_grid_log_mass(z_x, 0.0, self.config.z_prior_sd)
+            if log_z_prior is None
+            else normalize_log_mass(log_z_prior, z_x.size)
+        )
+        loglik = coefficient_target_terms(
+            differential,
+            np.array([0.0]),
+            z_x,
+            self.config.method,
+            self.config.variance_floor,
+        )[:, :, 0]
+        return CoefficientLikelihood(
+            differential.group_names,
+            z_x,
+            loglik,
+            prior,
+            "zero",
         )
 
 
