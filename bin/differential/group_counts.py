@@ -1,4 +1,6 @@
-"""Posterior counts of footprinted and deviant groups."""
+"""Posterior summaries of footprinted and deviant groups."""
+
+from dataclasses import dataclass
 
 import numpy as np
 from scipy.special import logsumexp, ndtr
@@ -7,6 +9,93 @@ from .differential import Differential
 from .integration import gaussian_summary
 from .posterior import GridPosterior, normalize_log_mass
 from .variance_ratio import VarianceRatioLikelihood
+
+
+@dataclass(frozen=True, slots=True)
+class SoftFootprintCount:
+    """Posterior-predictive footprint prevalence and expected group count."""
+
+    group_names: tuple[str, ...]
+    prevalence: np.ndarray
+    threshold: float
+    model_sd: float
+    method: str
+
+    @property
+    def mean(self) -> np.ndarray:
+        return self.prevalence.sum(axis=0)
+
+    @property
+    def expected_count(self) -> np.ndarray:
+        return self.mean
+
+    @property
+    def strongest(self) -> np.ndarray:
+        return self.prevalence.max(axis=0)
+
+
+def infer_ksoft(
+    differential: Differential,
+    threshold: float = 0.0,
+    model_sd: float = 0.0,
+    method: str = "exact",
+    log_mu_prior: np.ndarray | None = None,
+    position_chunk_size: int = 64,
+) -> SoftFootprintCount:
+    """Expected number of groups with predictive signal below ``threshold``.
+
+    For each group, prevalence is ``P(theta_new < threshold | data)`` under
+    ``theta_new ~ N(mu, sigma2 + model_sd**2)``.
+    """
+    if model_sd < 0:
+        raise ValueError("model_sd must be nonnegative")
+    if position_chunk_size < 1:
+        raise ValueError("position_chunk_size must be positive")
+    prior = (
+        differential.log_mu_prior
+        if log_mu_prior is None
+        else normalize_log_mass(log_mu_prior, differential.mu_x.size)
+    )
+    kernel = ndtr(
+        (threshold - differential.mu_x[:, None])
+        / np.sqrt(differential.sig2_x[None] + model_sd**2)
+    )
+    prevalence = np.empty(differential.loglik_mu.shape[:2])
+
+    for lo in range(0, prevalence.shape[1], position_chunk_size):
+        hi = min(lo + position_chunk_size, prevalence.shape[1])
+        joint = (
+            differential.loglik_mu_sig2[:, lo:hi]
+            + prior[None, None, :, None]
+            + differential.log_sig2_prior[:, None, None]
+        )
+        if method == "exact":
+            denominator = logsumexp(joint, axis=(2, 3))
+            numerator = logsumexp(
+                joint, axis=(2, 3), b=kernel[None, None]
+            )
+            prevalence[:, lo:hi] = np.exp(numerator - denominator)
+        elif method == "gaussian":
+            joint -= logsumexp(joint, axis=(2, 3), keepdims=True)
+            mass = np.exp(joint)
+            mu = np.sum(mass * differential.mu_x[None, None, :, None], axis=(2, 3))
+            variance = np.sum(
+                mass
+                * (
+                    differential.sig2_x[None, None, None]
+                    + (differential.mu_x[None, None, :, None] - mu[:, :, None, None]) ** 2
+                ),
+                axis=(2, 3),
+            )
+            prevalence[:, lo:hi] = ndtr(
+                (threshold - mu) / np.sqrt(variance + model_sd**2)
+            )
+        else:
+            raise ValueError("method must be 'exact' or 'gaussian'")
+
+    return SoftFootprintCount(
+        differential.group_names, prevalence, threshold, model_sd, method
+    )
 
 
 def binary_count_log_evidence(

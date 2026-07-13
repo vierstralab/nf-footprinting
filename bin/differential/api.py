@@ -13,7 +13,7 @@ from .config import (
 )
 from .differential import DifferentialModel, fit_group_means_segmentation
 from .eta import fit_eta_segmentation
-from .group_counts import infer_kdev, infer_kfp
+from .group_counts import infer_kdev, infer_kfp, infer_ksoft
 from .theta import ThetaModel, fit_theta_segmentation
 from .variance_ratio import VarianceRatioModel, fit_mu0_segmentation
 
@@ -148,6 +148,27 @@ class FootprintCountLoader(PlotDataLoader):
         else:
             raise ValueError("source must be 'segmented' or 'pointwise'")
         data.kfp = infer_kfp(mu_posterior, threshold)
+        return data
+
+
+class SoftFootprintCountLoader(PlotDataLoader):
+    def _load(
+        self,
+        data,
+        threshold=0.0,
+        model_sd=0.0,
+        method="exact",
+        log_mu_prior=None,
+        position_chunk_size=64,
+    ):
+        data.ksoft = infer_ksoft(
+            data.differential,
+            threshold,
+            model_sd,
+            method,
+            log_mu_prior,
+            position_chunk_size,
+        )
         return data
 
 

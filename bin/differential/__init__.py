@@ -11,7 +11,7 @@ from .differential import (
     make_group_mean_log_prior,
 )
 from .eta import EtaSegmentation, fit_eta_segmentation
-from .group_counts import infer_kdev, infer_kfp
+from .group_counts import SoftFootprintCount, infer_kdev, infer_kfp, infer_ksoft
 from .posterior import GridPosterior
 from .segmentation import LengthPrior, Segmentation, SegmentationPath, segment
 from .theta import (
@@ -50,7 +50,9 @@ __all__ = [
     "fit_mu0_segmentation",
     "EtaSegmentation",
     "fit_eta_segmentation",
+    "SoftFootprintCount",
     "infer_kfp",
+    "infer_ksoft",
     "infer_kdev",
     "CoefficientLikelihood",
     "CoefficientModel",
