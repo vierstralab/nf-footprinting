@@ -113,28 +113,39 @@ def binary_count_log_evidence(
     return out
 
 
+def _count_posterior(probability: np.ndarray) -> GridPosterior:
+    probability = np.clip(np.asarray(probability, dtype=float), 0.0, 1.0)
+    with np.errstate(divide="ignore"):
+        log_event = np.log(probability)
+        log_no_event = np.log1p(-probability)
+    return GridPosterior(
+        np.arange(probability.shape[0] + 1, dtype=float),
+        binary_count_log_evidence(log_no_event, log_event),
+    )
+
+
 def infer_kfp(
     mu_posterior: GridPosterior,
     threshold: float = 0.0,
 ) -> GridPosterior:
-    """Posterior count of groups with ``mu < threshold`` at each position.
-
-    ``mu_posterior`` must have shape ``group x position x mu``. The calculation
-    is exact under the independent group-mean posterior models.
-    """
+    """Posterior count of groups with ``mu < threshold`` at each position."""
     if mu_posterior.log_mass.ndim != 3:
+        raise ValueError("mu_posterior must have shape group x position x mu")
+    return _count_posterior(mu_posterior.prob_lt(threshold))
+
+
+def infer_kfp_zero(
+    zero_z_posterior: GridPosterior,
+    threshold: float = 1.0,
+) -> GridPosterior:
+    """Posterior count of groups with ``mu / sigma < -threshold``."""
+    if threshold < 0:
+        raise ValueError("threshold must be nonnegative")
+    if zero_z_posterior.log_mass.ndim != 3:
         raise ValueError(
-            "mu_posterior must have shape group x position x mu"
+            "zero_z_posterior must have shape group x position x z"
         )
-    probability = np.clip(mu_posterior.prob_lt(threshold), 0.0, 1.0)
-    with np.errstate(divide="ignore"):
-        log_event = np.log(probability)
-        log_no_event = np.log1p(-probability)
-    log_mass = binary_count_log_evidence(log_no_event, log_event)
-    return GridPosterior(
-        np.arange(probability.shape[0] + 1, dtype=float),
-        log_mass,
-    )
+    return _count_posterior(zero_z_posterior.prob_lt(-threshold))
 
 
 def infer_kdev(

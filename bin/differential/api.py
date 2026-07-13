@@ -20,6 +20,7 @@ from .eta import fit_eta_segmentation
 from .group_counts import (
     infer_kdev,
     infer_kfp,
+    infer_kfp_zero,
     infer_ksoft,
 )
 from .theta import ThetaModel, fit_theta_segmentation
@@ -185,6 +186,18 @@ class FootprintCountLoader(PlotDataLoader):
         else:
             raise ValueError("source must be 'segmented' or 'pointwise'")
         data.kfp = infer_kfp(mu_posterior, threshold)
+        return data
+
+
+class ZeroFootprintCountLoader(PlotDataLoader):
+    def _load(self, data, threshold=1.0, source="segmented"):
+        if source == "segmented":
+            posterior = data.zero_coefficient_segmentation.posterior
+        elif source == "pointwise":
+            posterior = data.zero_coefficient_likelihood.posterior()
+        else:
+            raise ValueError("source must be 'segmented' or 'pointwise'")
+        data.kfp_zero = infer_kfp_zero(posterior, threshold)
         return data
 
 

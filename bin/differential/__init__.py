@@ -16,6 +16,7 @@ from .group_counts import (
     SoftFootprintCount,
     infer_kdev,
     infer_kfp,
+    infer_kfp_zero,
     infer_ksoft,
 )
 from .posterior import GridPosterior
@@ -58,6 +59,7 @@ __all__ = [
     "fit_eta_segmentation",
     "SoftFootprintCount",
     "infer_kfp",
+    "infer_kfp_zero",
     "infer_ksoft",
     "infer_kdev",
     "CoefficientLikelihood",
