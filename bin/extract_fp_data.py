@@ -185,6 +185,7 @@ if __name__ == "__main__":
         dhs_region,
         sample_data
     )
+
     save_map = {
         'diff_data': data.differential,
         'diff_data_segmentation': data.segmentation,
@@ -197,6 +198,8 @@ if __name__ == "__main__":
 
         'common_coefs_likelihood': data.common_coefficient_likelihood,
         'common_coefs_segmentation': data.common_coefficient_segmentation,
+
+        'per_sample_depletions': data.per_sample_depletions,
     }
 
     for prefix, save_object in save_map.items():
