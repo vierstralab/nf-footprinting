@@ -12,6 +12,8 @@ from differential.api import (
 from differential.segmentation import LengthPrior
 from differential.config import VarianceRatioConfig, DifferentialConfig, CoefficientConfig, ThetaConfig
 
+from differential_stats import summarize_kfp_zero_regions
+
 
 import sys
 import pandas as pd
@@ -202,6 +204,15 @@ if __name__ == "__main__":
         'per_sample_depletions': data.theta,
         'mu0_segmentation': data.mu0_segmentation,
     }
+
+    summary = summarize_kfp_zero_regions(
+        data,
+        thresholds=(0.85, 1.0, 1.25),
+        probability_cutoff=0.99,
+        footprint_cutoff=1.0,
+    )
+    summary['dhs_id'] = dhs_id
+    summary.to_csv(f'{sys.argv[4]}/summary.{dhs_id}.tsv', index=False, sep='\t')
 
     for prefix, save_object in save_map.items():
         save_object.to_npz(f'{sys.argv[4]}/{prefix}.{dhs_id}.npz')

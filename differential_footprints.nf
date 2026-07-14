@@ -15,7 +15,7 @@ process diff_footprints {
         val dhs_id
 
     output:
-        tuple val(dhs_id), path("*${dhs_id}.npz")
+        tuple val(dhs_id), path("*${dhs_id}.npz"), path("summary.${dhs_id}.tsv")
 
     script:
     """
@@ -33,4 +33,11 @@ workflow {
         | splitCsv(header: true, sep: '\t')
         | map(it -> it.dhs_id)
         | diff_footprints
+        | map(it -> it[2])
+        | collectFile(
+            name: 'summary.tsv',
+            storeDir: params.outdir,
+            skip: 1,
+            keepHeader: true
+        )
 }
