@@ -3,15 +3,20 @@ from genome_tools import df_to_genomic_intervals
 from genome_tools.plotting.modular_plot.api import DataBundle
 from genome_tools.plotting.modular_plot.loaders.footprint import FootprintsDataLoader
 
-from differential.api import DifferentialLoader, GroupMeanSegmentationLoader, VarianceRatioLoader, EtaSegmentationLoader, CoefficientLikelihoodLoader, CoefficientSegmentationLoader
-from differential.differential import DifferentialConfig, LengthPrior
-from differential.variance_ratio import VarianceRatioConfig
-from differential.coefficients import CoefficientConfig
+from differential.api import (
+    DifferentialLoader, GroupMeanSegmentationLoader, VarianceRatioLoader, EtaSegmentationLoader,
+    ZeroCoefficientLikelihoodLoader, ZeroCoefficientSegmentationLoader,
+    CommonCoefficientLikelihoodLoader, CommonCoefficientSegmentationLoader,
+    ZeroFootprintCountLoader, ThetaLoader, Mu0SegmentationLoader
+)
+from differential.segmentation import LengthPrior
+from differential.config import VarianceRatioConfig, DifferentialConfig, CoefficientConfig, ThetaConfig
 
 
 import sys
 import pandas as pd
 import numpy as np
+import polars as pl
 
 
 def extract_group_means(data, length_prior):
@@ -31,6 +36,17 @@ def extract_group_means(data, length_prior):
     )
     return data
 
+def extract_per_sample_depletions(data):
+    data = ThetaLoader()._load(
+        data,
+        config=ThetaConfig(
+            mode="sample_only",
+            position_chunk_size=8,
+        ),
+    )
+
+    theta = data.theta.posterior()
+
 
 def extract_icc(data, length_prior):
     data = VarianceRatioLoader()._load(data, config=VarianceRatioConfig(
@@ -40,9 +56,14 @@ def extract_icc(data, length_prior):
         include_zero=False,
         method="gaussian",
         consistent_mass=None,
-        eta_prior_mean=-1.0,
-        eta_prior_sd=-2.0,
+        eta_prior_mean=-2.0,
+        eta_prior_sd=4.0,
     ))
+
+    data = Mu0SegmentationLoader()._load(
+        data,
+        length_prior=length_prior,
+    )
     data = EtaSegmentationLoader()._load(
         data,
         length_prior=length_prior,
@@ -51,24 +72,80 @@ def extract_icc(data, length_prior):
     return data
 
 
-def extract_coefs(data, length_prior):
-    data = CoefficientLikelihoodLoader()._load(
-        data,
-        config=CoefficientConfig(
-            z_min=-5.0,
-            z_max=5.0,
-            z_step=0.05,
-            method="gaussian",
-            zero_mass=None,
-            z_prior_sd=1.5,
-        )
-    )
-    data = CoefficientSegmentationLoader()._load(
+def extract_zero_coefs(data, length_prior):
+    data = ZeroCoefficientLikelihoodLoader()._load(data, config=CoefficientConfig(
+        z_min=-5.0,
+        z_max=5.0,
+        z_step=0.05,
+    ))
+    data = ZeroCoefficientSegmentationLoader()._load(
         data,
         length_prior=length_prior,
     )
 
     return data
+
+def extract_common_coefs(data, length_prior):
+    data = CommonCoefficientLikelihoodLoader()._load(data, config=CoefficientConfig(
+        z_min=-5.0,
+        z_max=5.0,
+        z_step=0.05,
+    ))
+    data = CommonCoefficientSegmentationLoader()._load(
+        data,
+        length_prior=length_prior,
+    )
+
+    return data
+
+def extract_footprint_count(data):
+
+    data = ZeroFootprintCountLoader()._load(
+        data,
+        threshold=1.0,
+        source="segmented",
+    )
+    return data
+
+def footprint_log_mass(path, max_width=100, min_width=4):
+    df = pl.read_csv(path, separator="\t")
+    hs = ["hotspot_chr", "hotspot_start", "hotspot_end"]
+
+    footprint_widths = (
+        df.unique("dhs_id")
+        .select(pl.col("dhs_width").alias("width"))
+    )
+
+    spacings = (
+        df.unique(hs + ["dhs_id"])
+        .sort(hs + ["start", "end"])
+        .with_columns(
+            prev_id=pl.col("dhs_id").shift().over(hs),
+            width=(
+                pl.col("start") - pl.col("end").shift().over(hs)
+            ).clip(lower_bound=0),
+        )
+        .drop_nulls("prev_id")
+        .unique(["prev_id", "dhs_id"])
+        .select("width")
+    )
+
+    counts_df = (
+        pl.concat([footprint_widths, spacings])
+        .filter(pl.col("width").is_between(0, max_width))
+        .group_by("width")
+        .len()
+    )
+
+    counts = np.zeros(max_width + 1)
+    counts[counts_df["width"].to_numpy().astype(int)] = counts_df["len"].to_numpy()
+
+    log_mass = np.full(max_width + 1, -np.inf)
+    positive = counts > 0
+    log_mass[positive] = np.log(counts[positive] / counts.sum())
+    log_mass[:min_width] = -np.inf
+
+    return log_mass
 
 def extract_data_for_dhs_interval(interval, sample_data):
     data = DataBundle(interval=interval)
@@ -84,13 +161,20 @@ def extract_data_for_dhs_interval(interval, sample_data):
     print(data.obs.shape)
 
     length_prior = LengthPrior.from_log_mass(
-        np.r_[np.full(5, -np.inf), np.full(40, -1), -1.1],#, np.full(50, -np.inf)],
+        footprint_log_mass(
+            "/net/seq/data2/projects/ENCODE4Plus/footprints/2025_footprints/index_200M/fps_index_intersect_hotspot.tsv",
+            max_width=500,
+            min_width=4,
+        ),
         infer_tail=True,
     )
 
     extract_group_means(data, length_prior)
+    extract_per_sample_depletions(data)
     extract_icc(data, length_prior)
-    extract_coefs(data, length_prior)
+    extract_zero_coefs(data, length_prior)
+    extract_common_coefs(data, length_prior)
+    extract_footprint_count(data)
 
     return data
 
@@ -118,8 +202,13 @@ if __name__ == "__main__":
         'icc_pointwise': data.variance_ratio,
         'icc_segmentation': data.eta_segmentation,
 
-        'coefs_likelihood': data.group_coefficient_likelihood,
-        'coefs_segmentation': data.group_coefficient_segmentation,
+        'zero_coefs_likelihood': data.zero_coefficient_likelihood,
+        'zero_coefs_segmentation': data.zero_coefficient_segmentation,
+
+        'common_coefs_likelihood': data.common_coefficient_likelihood,
+        'common_coefs_segmentation': data.common_coefficient_segmentation,
+
+        'footprint_count': data.kfp_zero
     }
 
     for prefix, save_object in save_map.items():
