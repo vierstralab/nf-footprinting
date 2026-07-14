@@ -200,6 +200,7 @@ if __name__ == "__main__":
         'common_coefs_segmentation': data.common_coefficient_segmentation,
 
         'per_sample_depletions': data.per_sample_depletions,
+        'mu0_segmentation': data.mu0_segmentation,
     }
 
     for prefix, save_object in save_map.items():
