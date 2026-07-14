@@ -98,15 +98,6 @@ def extract_common_coefs(data, length_prior):
 
     return data
 
-def extract_footprint_count(data):
-
-    data = ZeroFootprintCountLoader()._load(
-        data,
-        threshold=1.0,
-        source="segmented",
-    )
-    return data
-
 def footprint_log_mass(path, max_width=100, min_width=4):
     df = pl.read_csv(path, separator="\t")
     hs = ["hotspot_chr", "hotspot_start", "hotspot_end"]
@@ -174,7 +165,6 @@ def extract_data_for_dhs_interval(interval, sample_data):
     extract_icc(data, length_prior)
     extract_zero_coefs(data, length_prior)
     extract_common_coefs(data, length_prior)
-    extract_footprint_count(data)
 
     return data
 
@@ -207,8 +197,6 @@ if __name__ == "__main__":
 
         'common_coefs_likelihood': data.common_coefficient_likelihood,
         'common_coefs_segmentation': data.common_coefficient_segmentation,
-
-        'footprint_count': data.kfp_zero
     }
 
     for prefix, save_object in save_map.items():
