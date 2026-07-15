@@ -205,6 +205,12 @@ if __name__ == "__main__":
         'mu0_segmentation': data.mu0_segmentation,
     }
 
+    data = ZeroFootprintCountLoader()._load(
+        data,
+        threshold=1.0,
+        source="segmented",
+    )
+
     summary = summarize_kfp_zero_regions(
         data,
         thresholds=(0.85, 1.0, 1.25),
