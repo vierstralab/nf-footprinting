@@ -94,17 +94,7 @@ def footprint_log_mass(path, max_width=100, min_width=4):
 
     return log_mass
 
-def extract_data_for_dhs_interval(interval, sample_data, fp_index_w_hotspots_path):
-    data = DataBundle(interval=interval)
-
-    data.groups_data = sample_data.loc[:, 'extended_annotation'].copy()
-    data.grouping_column = 'extended_annotation'
-
-    data = FootprintsDataLoader()._load(
-        data,
-        footprints_metadata=sample_data,
-        calc_posteriors=False
-    )
+def get_length_prior(fp_index_w_hotspots_path):
 
     length_prior = LengthPrior.from_log_mass(
         footprint_log_mass(
@@ -114,6 +104,20 @@ def extract_data_for_dhs_interval(interval, sample_data, fp_index_w_hotspots_pat
         ),
         infer_tail=True,
         n_tail=2,
+    )
+
+    return length_prior
+
+def extract_data_for_dhs_interval(interval, sample_data, length_prior):
+    data = DataBundle(interval=interval)
+
+    data.groups_data = sample_data.loc[:, 'extended_annotation'].copy()
+    data.grouping_column = 'extended_annotation'
+
+    data = FootprintsDataLoader()._load(
+        data,
+        footprints_metadata=sample_data,
+        calc_posteriors=False
     )
 
     data = extract_group_means(
@@ -181,7 +185,7 @@ if __name__ == "__main__":
     data = extract_data_for_dhs_interval(
         dhs_region,
         sample_data,
-        fp_index_w_hotspots_path
+        length_prior=get_length_prior(fp_index_w_hotspots_path),
     )
 
     save_map = {
