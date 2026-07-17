@@ -1,6 +1,10 @@
+from types import SimpleNamespace
+
+import numpy as np
 from genome_tools.plotting.modular_plot.api import PlotDataLoader
 
 from .coefficients import (
+    CoefficientLikelihood,
     CommonCoefficientModel,
     ZeroCoefficientModel,
     fit_coefficient_segmentation,
@@ -17,10 +21,93 @@ from .config import (
     DEFAULT_THETA_SEGMENTATION,
     DEFAULT_VARIANCE_RATIO,
 )
-from .differential import DifferentialModel, fit_group_means_segmentation
-from .eta import fit_eta_segmentation
-from .theta import ThetaModel, fit_theta_segmentation
-from .variance_ratio import VarianceRatioModel, fit_mu0_segmentation
+from .differential import Differential, DifferentialModel, fit_group_means_segmentation
+from .eta import EtaSegmentation, fit_eta_segmentation
+from .posterior import GridPosterior
+from .segmentation import Segmentation
+from .theta import ThetaLikelihood, ThetaModel, fit_theta_segmentation
+from .variance_ratio import VarianceRatioLikelihood, VarianceRatioModel, fit_mu0_segmentation
+
+
+_DATA_RESULT_CLASSES = {
+    "differential": Differential,
+    "segmentation": Segmentation,
+    "variance_ratio": VarianceRatioLikelihood,
+    "eta_segmentation": EtaSegmentation,
+    "mu0_segmentation": Segmentation,
+    "common_coefficient_likelihood": CoefficientLikelihood,
+    "common_coefficient_segmentation": Segmentation,
+    "zero_coefficient_likelihood": CoefficientLikelihood,
+    "zero_coefficient_segmentation": Segmentation,
+    "kfp_zero": GridPosterior,
+    "kfp_dev": GridPosterior,
+    "theta": ThetaLikelihood,
+    "theta_segmentation": Segmentation,
+}
+
+
+def data_results_to_dict(data, fields=None):
+    """Return serializable loader-produced fields from a data object.
+
+    Only known fields that are present on ``data`` are included.  Each value is
+    produced by the object's own ``to_dict()`` method, so likelihood/result
+    classes retain ownership of their serialization.
+    """
+    selected = _selected_result_fields(fields)
+    out = {}
+    for name in selected:
+        obj = getattr(data, name, None)
+        if obj is not None:
+            out[name] = obj.to_dict()
+    return out
+
+
+def data_results_from_dict(values, data=None, fields=None):
+    """Attach serialized loader-produced fields to ``data`` and return it."""
+    data = SimpleNamespace() if data is None else data
+    selected = set(values) if fields is None else set(_selected_result_fields(fields))
+    for name in _DATA_RESULT_CLASSES:
+        if name in selected and name in values:
+            setattr(data, name, _DATA_RESULT_CLASSES[name].from_dict(values[name]))
+    return data
+
+
+def save_data_results(data, path, fields=None):
+    """Save all present loader-produced result fields from ``data`` to one NPZ."""
+    values = data_results_to_dict(data, fields)
+    payload = {"__fields__": np.asarray(tuple(values), dtype=str)}
+    for name, item in values.items():
+        payload[f"{name}.__class__"] = np.asarray(_DATA_RESULT_CLASSES[name].__name__)
+        for key, value in item.items():
+            payload[f"{name}.{key}"] = value
+    np.savez_compressed(path, **payload)
+
+
+def load_data_results(path, data=None, fields=None):
+    """Load an NPZ written by ``save_data_results`` into ``data`` and return it."""
+    with np.load(path, allow_pickle=False) as handle:
+        saved = tuple(str(x) for x in handle["__fields__"].tolist())
+        selected = set(saved) if fields is None else set(_selected_result_fields(fields))
+        values = {}
+        for name in saved:
+            if name not in selected:
+                continue
+            prefix = f"{name}."
+            values[name] = {
+                key[len(prefix):]: handle[key]
+                for key in handle.files
+                if key.startswith(prefix) and not key.endswith(".__class__")
+            }
+    return data_results_from_dict(values, data)
+
+
+def _selected_result_fields(fields):
+    if fields is None:
+        return tuple(_DATA_RESULT_CLASSES)
+    unknown = set(fields) - set(_DATA_RESULT_CLASSES)
+    if unknown:
+        raise ValueError(f"unknown data result fields: {sorted(unknown)}")
+    return tuple(fields)
 
 
 class DifferentialLoader(PlotDataLoader):
