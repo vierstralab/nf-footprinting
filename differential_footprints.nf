@@ -23,6 +23,7 @@ process diff_footprints {
         ${dhs_id} \
         ${params.dhs_index} \
         ${params.footprints_metadata} \
+        ${params.fp_index_w_hotspots_path} \
         ./
     """
 }

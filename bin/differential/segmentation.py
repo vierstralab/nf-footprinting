@@ -38,14 +38,28 @@ class LengthPrior:
         object.__setattr__(self, "log_tail_ratio", np.ascontiguousarray(ratio))
 
     @classmethod
-    def from_log_mass(cls, log_mass: np.ndarray, infer_tail: bool = False) -> "LengthPrior":
+    def from_log_mass(
+        cls,
+        log_mass: np.ndarray,
+        infer_tail: bool = False,
+        n_tail: int = 2,
+    ) -> "LengthPrior":
         value = np.asarray(log_mass, dtype=float)
         rows = value[None] if value.ndim == 1 else value
+
         ratio = np.full(rows.shape[0], -np.inf)
+
         if infer_tail:
-            ratio = rows[:, -1] - rows[:, -2]
+            if not 2 <= n_tail <= rows.shape[1]:
+                raise ValueError(
+                    f"n_tail must be between 2 and {rows.shape[1]}"
+                )
+
+            ratio = np.diff(rows[:, -n_tail:], axis=1).mean(axis=1)
+
             if np.any(ratio >= 0):
-                raise ValueError("the inferred tail ratio must be below one")
+                raise ValueError("the inferred tail log-ratio must be below zero")
+
         return cls(value, ratio)
 
     def for_states(self, n_state: int) -> tuple[np.ndarray, np.ndarray]:

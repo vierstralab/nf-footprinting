@@ -21,82 +21,36 @@ import numpy as np
 import polars as pl
 
 
-def extract_group_means(data, length_prior):
-    data = DifferentialLoader()._load(
-        data,
-        config=DifferentialConfig(
-            mu_min=-6.0,
-            mu_max=6.0,
-            n_mu=201,
-            n_sig2=81  
-        )
-    )
-
-    data = GroupMeanSegmentationLoader()._load(
-        data,
-        length_prior=length_prior,
-    )
-    return data
-
-def extract_per_sample_depletions(data):
-    data = ThetaLoader()._load(
-        data,
-        config=ThetaConfig(
-            mode="sample_only",
-            position_chunk_size=8,
-        ),
-    )
-
-    theta = data.theta.posterior()
-
-
-def extract_icc(data, length_prior):
-    data = VarianceRatioLoader()._load(data, config=VarianceRatioConfig(
-        eta_min=-4.0,
-        eta_max=4.0,
-        eta_step=0.05,
-        include_zero=False,
-        method="gaussian",
-        consistent_mass=None,
-        eta_prior_mean=-2.0,
-        eta_prior_sd=4.0,
-    ))
-
-    data = Mu0SegmentationLoader()._load(
-        data,
-        length_prior=length_prior,
-    )
-    data = EtaSegmentationLoader()._load(
-        data,
-        length_prior=length_prior,
-    )
+def extract_group_means(data, length_prior, config):
+    data = DifferentialLoader()._load(data, config=config)
+    data = GroupMeanSegmentationLoader()._load(data, length_prior=length_prior)
 
     return data
 
 
-def extract_zero_coefs(data, length_prior):
-    data = ZeroCoefficientLikelihoodLoader()._load(data, config=CoefficientConfig(
-        z_min=-5.0,
-        z_max=5.0,
-        z_step=0.05,
-    ))
-    data = ZeroCoefficientSegmentationLoader()._load(
-        data,
-        length_prior=length_prior,
-    )
+def extract_per_sample_depletions(data, config):
+    data = ThetaLoader()._load(data, config=config)
 
     return data
 
-def extract_common_coefs(data, length_prior):
-    data = CommonCoefficientLikelihoodLoader()._load(data, config=CoefficientConfig(
-        z_min=-5.0,
-        z_max=5.0,
-        z_step=0.05,
-    ))
-    data = CommonCoefficientSegmentationLoader()._load(
-        data,
-        length_prior=length_prior,
-    )
+
+def extract_icc(data, length_prior, config):
+    data = VarianceRatioLoader()._load(data, config=config)
+    data = Mu0SegmentationLoader()._load(data, length_prior=length_prior)
+    data = EtaSegmentationLoader()._load(data, length_prior=length_prior)
+
+    return data
+
+
+def extract_zero_coefs(data, length_prior, config):
+    data = ZeroCoefficientLikelihoodLoader()._load(data, config=config)
+    data = ZeroCoefficientSegmentationLoader()._load(data, length_prior=length_prior)
+
+    return data
+
+def extract_common_coefs(data, length_prior, config):
+    data = CommonCoefficientLikelihoodLoader()._load(data, config=config)
+    data = CommonCoefficientSegmentationLoader()._load(data, length_prior=length_prior)
 
     return data
 
@@ -140,7 +94,7 @@ def footprint_log_mass(path, max_width=100, min_width=4):
 
     return log_mass
 
-def extract_data_for_dhs_interval(interval, sample_data):
+def extract_data_for_dhs_interval(interval, sample_data, fp_index_w_hotspots_path):
     data = DataBundle(interval=interval)
 
     data.groups_data = sample_data.loc[:, 'extended_annotation'].copy()
@@ -151,22 +105,61 @@ def extract_data_for_dhs_interval(interval, sample_data):
         footprints_metadata=sample_data,
         calc_posteriors=False
     )
-    print(data.obs.shape)
 
     length_prior = LengthPrior.from_log_mass(
         footprint_log_mass(
-            "/net/seq/data2/projects/ENCODE4Plus/footprints/2025_footprints/index_200M/fps_index_intersect_hotspot.tsv",
+            fp_index_w_hotspots_path,
             max_width=500,
             min_width=4,
         ),
         infer_tail=True,
+        n_tail=2,
     )
 
-    extract_group_means(data, length_prior)
-    extract_per_sample_depletions(data)
-    extract_icc(data, length_prior)
-    extract_zero_coefs(data, length_prior)
-    extract_common_coefs(data, length_prior)
+    data = extract_group_means(
+        data, length_prior, config=DifferentialConfig(
+            mu_min=-6.0,
+            mu_max=6.0,
+            n_mu=201,
+            n_sig2=81  
+        )
+    )
+    data = extract_per_sample_depletions(
+        data, config=ThetaConfig(
+            mode="sample_only",
+            position_chunk_size=64,
+        )
+    )
+    data = extract_icc(
+        data, length_prior, config=VarianceRatioConfig(
+            eta_min=-4.0,
+            eta_max=4.0,
+            eta_step=0.05,
+            include_zero=False,
+            consistent_mass=None,
+            eta_prior_mean=-2.0,
+            eta_prior_sd=4.0,
+            method="gaussian",
+        )
+    )
+    
+    coef_config = CoefficientConfig(
+        z_min=-5.0,
+        z_max=5.0,
+        z_step=0.05,
+    )
+    data = extract_zero_coefs(
+        data, length_prior, config=coef_config,
+    )
+    data = extract_common_coefs(
+        data, length_prior, config=coef_config,
+    )
+
+    data = ZeroFootprintCountLoader()._load(
+        data,
+        threshold=1.0,
+        source="segmented",
+    )
 
     return data
 
@@ -177,6 +170,8 @@ if __name__ == "__main__":
 
     sample_data = pd.read_table(sys.argv[3]).set_index('sample_id')
 
+    fp_index_w_hotspots_path = sys.argv[4]
+
     # for dhs_id in human_anndata.var.query('num_samples >= 4000').index[4:5]:
     dhs_region = df_to_genomic_intervals(
         dhs_index.loc[[dhs_id]].reset_index(),
@@ -185,7 +180,8 @@ if __name__ == "__main__":
 
     data = extract_data_for_dhs_interval(
         dhs_region,
-        sample_data
+        sample_data,
+        fp_index_w_hotspots_path
     )
 
     save_map = {
@@ -205,18 +201,13 @@ if __name__ == "__main__":
         'mu0_segmentation': data.mu0_segmentation,
     }
 
-    data = ZeroFootprintCountLoader()._load(
-        data,
-        threshold=1.0,
-        source="segmented",
-    )
-
     summary = summarize_kfp_zero_regions(
         data,
         thresholds=(0.85, 1.0, 1.25),
         probability_cutoff=0.99,
         footprint_cutoff=1.0,
     )
+
     summary['dhs_id'] = dhs_id
     summary.to_csv(f'{sys.argv[4]}/summary.{dhs_id}.tsv', index=False, sep='\t')
 
