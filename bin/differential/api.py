@@ -4,6 +4,8 @@ from .coefficients import (
     CommonCoefficientModel,
     ZeroCoefficientModel,
     fit_coefficient_segmentation,
+    infer_kfp_dev,
+    infer_kfp_zero,
 )
 from .config import (
     DEFAULT_COEFFICIENT,
@@ -17,12 +19,6 @@ from .config import (
 )
 from .differential import DifferentialModel, fit_group_means_segmentation
 from .eta import fit_eta_segmentation
-from .group_counts import (
-    infer_kdev,
-    infer_kfp,
-    infer_kfp_zero,
-    infer_ksoft,
-)
 from .theta import ThetaModel, fit_theta_segmentation
 from .variance_ratio import VarianceRatioModel, fit_mu0_segmentation
 
@@ -171,24 +167,6 @@ class ZeroCoefficientSegmentationLoader(PlotDataLoader):
         return data
 
 
-class FootprintCountLoader(PlotDataLoader):
-    def _load(
-        self,
-        data,
-        threshold=0.0,
-        source="segmented",
-        log_mu_prior=None,
-    ):
-        if source == "segmented":
-            mu_posterior = data.segmentation.posterior
-        elif source == "pointwise":
-            mu_posterior = data.differential.posterior(log_mu_prior)
-        else:
-            raise ValueError("source must be 'segmented' or 'pointwise'")
-        data.kfp = infer_kfp(mu_posterior, threshold)
-        return data
-
-
 class ZeroFootprintCountLoader(PlotDataLoader):
     def _load(self, data, threshold=1.0, source="segmented"):
         if source == "segmented":
@@ -201,43 +179,15 @@ class ZeroFootprintCountLoader(PlotDataLoader):
         return data
 
 
-class SoftFootprintCountLoader(PlotDataLoader):
-    def _load(
-        self,
-        data,
-        threshold=0.0,
-        log_mu_prior=None,
-        position_chunk_size=64,
-    ):
-        data.ksoft = infer_ksoft(
-            data.differential,
-            threshold,
-            log_mu_prior,
-            position_chunk_size,
-        )
-        return data
-
-
-
-class DeviantGroupCountLoader(PlotDataLoader):
-    def _load(
-        self,
-        data,
-        threshold=1.0,
-        variance_floor=None,
-        position_chunk_size=64,
-        log_mu0_prior=None,
-        log_eta_prior=None,
-    ):
-        data.kdev = infer_kdev(
-            data.differential,
-            data.variance_ratio,
-            threshold=threshold,
-            variance_floor=variance_floor,
-            position_chunk_size=position_chunk_size,
-            log_mu0_prior=log_mu0_prior,
-            log_eta_prior=log_eta_prior,
-        )
+class DeviantFootprintCountLoader(PlotDataLoader):
+    def _load(self, data, threshold=1.0, source="segmented"):
+        if source == "segmented":
+            posterior = data.common_coefficient_segmentation.posterior
+        elif source == "pointwise":
+            posterior = data.common_coefficient_likelihood.posterior()
+        else:
+            raise ValueError("source must be 'segmented' or 'pointwise'")
+        data.kfp_dev = infer_kfp_dev(posterior, threshold)
         return data
 
 
