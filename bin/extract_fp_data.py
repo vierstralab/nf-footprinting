@@ -3,16 +3,17 @@ from genome_tools import df_to_genomic_intervals
 from genome_tools.plotting.modular_plot.api import DataBundle
 from genome_tools.plotting.modular_plot.loaders.footprint import FootprintsDataLoader
 
-from differential.api import (
+from footprint_tools.stats.differential.api import (
     DifferentialLoader, GroupMeanSegmentationLoader, VarianceRatioLoader, EtaSegmentationLoader,
     ZeroCoefficientLikelihoodLoader, ZeroCoefficientSegmentationLoader,
     CommonCoefficientLikelihoodLoader, CommonCoefficientSegmentationLoader,
-    ZeroFootprintCountLoader, ThetaLoader, Mu0SegmentationLoader
+    ZeroFootprintCountLoader, ThetaLoader, Mu0SegmentationLoader,
+    save_data_results
 )
-from differential.segmentation import LengthPrior
-from differential.config import VarianceRatioConfig, DifferentialConfig, CoefficientConfig, ThetaConfig
+from footprint_tools.stats.differential.segmentation import LengthPrior
+from footprint_tools.stats.differential.config import VarianceRatioConfig, DifferentialConfig, CoefficientConfig, ThetaConfig
 
-from differential_stats import summarize_kfp_zero_regions
+from genome_tools.plotting.modular_plot.loaders.basic import GroupsDataLoader
 
 
 import sys
@@ -103,7 +104,7 @@ def get_length_prior(fp_index_w_hotspots_path):
             min_width=4,
         ),
         infer_tail=True,
-        n_tail=2,
+        n_tail=200,
     )
 
     return length_prior
@@ -111,8 +112,10 @@ def get_length_prior(fp_index_w_hotspots_path):
 def extract_data_for_dhs_interval(interval, sample_data, length_prior):
     data = DataBundle(interval=interval)
 
-    data.groups_data = sample_data.loc[:, 'extended_annotation'].copy()
-    data.grouping_column = 'extended_annotation'
+    data = GroupsDataLoader()._load(
+        data,
+        sample_data.loc[:, 'extended_annotation'].copy()
+    )
 
     data = FootprintsDataLoader()._load(
         data,
@@ -176,7 +179,6 @@ if __name__ == "__main__":
 
     fp_index_w_hotspots_path = sys.argv[4]
 
-    # for dhs_id in human_anndata.var.query('num_samples >= 4000').index[4:5]:
     dhs_region = df_to_genomic_intervals(
         dhs_index.loc[[dhs_id]].reset_index(),
         extra_columns=['dhs_id']
@@ -188,33 +190,4 @@ if __name__ == "__main__":
         length_prior=get_length_prior(fp_index_w_hotspots_path),
     )
 
-    save_map = {
-        'diff_data': data.differential,
-        'diff_data_segmentation': data.segmentation,
-
-        'icc_pointwise': data.variance_ratio,
-        'icc_segmentation': data.eta_segmentation,
-
-        'zero_coefs_likelihood': data.zero_coefficient_likelihood,
-        'zero_coefs_segmentation': data.zero_coefficient_segmentation,
-
-        'common_coefs_likelihood': data.common_coefficient_likelihood,
-        'common_coefs_segmentation': data.common_coefficient_segmentation,
-
-        'per_sample_depletions': data.theta,
-        'mu0_segmentation': data.mu0_segmentation,
-    }
-
-    summary = summarize_kfp_zero_regions(
-        data,
-        thresholds=(0.85, 1.0, 1.25),
-        probability_cutoff=0.99,
-        footprint_cutoff=1.0,
-    )
-
-    summary['dhs_id'] = dhs_id
-    summary.to_csv(f'{sys.argv[4]}/summary.{dhs_id}.tsv', index=False, sep='\t')
-
-    for prefix, save_object in save_map.items():
-        save_object.to_npz(f'{sys.argv[4]}/{prefix}.{dhs_id}.npz')
-
+    save_data_results(data, sys.argv[5])

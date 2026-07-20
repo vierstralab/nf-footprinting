@@ -1,3 +1,6 @@
+import sys
+from footprint_tools.data.differential.api import load_data_results
+
 import numpy as np
 import pandas as pd
 
@@ -263,3 +266,20 @@ def summarize_kfp_zero_regions(
         rows.append(row)
 
     return pd.DataFrame(rows)
+
+
+if __name__ == "__main__":
+    dhs_id = sys.argv[1]
+    npz_path = sys.argv[2]
+
+    data = load_data_results(npz_path)
+
+    summary = summarize_kfp_zero_regions(
+        data,
+        thresholds=(1.0,),
+        probability_cutoff=0.99,
+        footprint_cutoff=1.0,
+    )
+
+    summary['dhs_id'] = dhs_id
+    summary.to_csv(sys.argv[3], index=False, sep='\t')
