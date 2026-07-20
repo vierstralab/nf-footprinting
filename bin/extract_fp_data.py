@@ -3,15 +3,15 @@ from genome_tools import df_to_genomic_intervals
 from genome_tools.plotting.modular_plot.api import DataBundle
 from genome_tools.plotting.modular_plot.loaders.footprint import FootprintsDataLoader
 
-from footprint_tools.stats.differential.api import (
+from footprint_tools.stats.differential_bayesian.api import (
     DifferentialLoader, GroupMeanSegmentationLoader, VarianceRatioLoader, EtaSegmentationLoader,
     ZeroCoefficientLikelihoodLoader, ZeroCoefficientSegmentationLoader,
     CommonCoefficientLikelihoodLoader, CommonCoefficientSegmentationLoader,
     ZeroFootprintCountLoader, ThetaLoader, Mu0SegmentationLoader,
     save_data_results
 )
-from footprint_tools.stats.differential.segmentation import LengthPrior
-from footprint_tools.stats.differential.config import VarianceRatioConfig, DifferentialConfig, CoefficientConfig, ThetaConfig
+from footprint_tools.stats.differential_bayesian.segmentation import LengthPrior
+from footprint_tools.stats.differential_bayesian.config import VarianceRatioConfig, DifferentialConfig, CoefficientConfig, ThetaConfig
 
 from genome_tools.plotting.modular_plot.loaders.basic import GroupsDataLoader
 

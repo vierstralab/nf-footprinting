@@ -1,5 +1,5 @@
 import sys
-from footprint_tools.data.differential.api import load_data_results
+from footprint_tools.stats.differential_bayesian.api import load_data_results
 
 import numpy as np
 import pandas as pd
