@@ -7,7 +7,7 @@ from footprint_tools.stats.differential_bayesian.api import (
     DifferentialLoader, GroupMeanSegmentationLoader, VarianceRatioLoader, EtaSegmentationLoader,
     ZeroCoefficientLikelihoodLoader, ZeroCoefficientSegmentationLoader,
     CommonCoefficientLikelihoodLoader, CommonCoefficientSegmentationLoader,
-    ZeroFootprintCountLoader, ThetaLoader, Mu0SegmentationLoader,
+    ZeroFootprintCountLoader, ThetaLoader, ThetaSegmentationLoader, Mu0SegmentationLoader,
     save_data_results
 )
 from footprint_tools.stats.differential_bayesian.segmentation import LengthPrior
@@ -29,8 +29,9 @@ def extract_group_means(data, length_prior, config):
     return data
 
 
-def extract_per_sample_depletions(data, config):
+def extract_per_sample_depletions(data, length_prior, config):
     data = ThetaLoader()._load(data, config=config)
+    data = ThetaSegmentationLoader()._load(data, length_prior=length_prior)
 
     return data
 
@@ -124,7 +125,9 @@ def extract_data_for_dhs_interval(interval, sample_data, length_prior):
     )
 
     data = extract_group_means(
-        data, length_prior, config=DifferentialConfig(
+        data,
+        length_prior=length_prior,
+        config=DifferentialConfig(
             mu_min=-6.0,
             mu_max=6.0,
             n_mu=201,
@@ -132,13 +135,17 @@ def extract_data_for_dhs_interval(interval, sample_data, length_prior):
         )
     )
     data = extract_per_sample_depletions(
-        data, config=ThetaConfig(
+        data, 
+        length_prior=length_prior,
+        config=ThetaConfig(
             mode="sample_only",
             position_chunk_size=64,
         )
     )
     data = extract_icc(
-        data, length_prior, config=VarianceRatioConfig(
+        data,
+        length_prior=length_prior,
+        config=VarianceRatioConfig(
             eta_min=-4.0,
             eta_max=4.0,
             eta_step=0.05,
@@ -156,10 +163,10 @@ def extract_data_for_dhs_interval(interval, sample_data, length_prior):
         z_step=0.05,
     )
     data = extract_zero_coefs(
-        data, length_prior, config=coef_config,
+        data, length_prior=length_prior, config=coef_config,
     )
     data = extract_common_coefs(
-        data, length_prior, config=coef_config,
+        data, length_prior=length_prior, config=coef_config,
     )
 
     data = ZeroFootprintCountLoader()._load(
