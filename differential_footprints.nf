@@ -10,6 +10,7 @@ process diff_footprints {
     tag "${dhs_id}"
     conda "/home/sabramov/miniconda3/envs/pytorch"
     publishDir "${params.outdir}/${dhs_id}"
+    label "diff_footprints"
 
     input: 
         val dhs_id
