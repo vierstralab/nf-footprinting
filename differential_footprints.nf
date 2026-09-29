@@ -54,11 +54,8 @@ process diff_summary {
 
 
 workflow summary_only {
-    Channel.fromPath("${params.outdir}/diff_data.*.npz")
-        | map { f ->
-            def dhs_id = f.baseName.replaceFirst(/^diff_data\./, '')
-            tuple(dhs_id, f)
-        }
+    Channel.fromPath("${params.outdir}/per_dhs/diff_data.*.npz", checkIfExists: true)
+        | map(it -> tuple(f.baseName - 'diff_data.', it))
         | diff_summary
         | map(it -> it[1])
         | collectFile(
