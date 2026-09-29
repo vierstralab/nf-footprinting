@@ -44,6 +44,7 @@ process diff_summary {
     script:
     name = "diff_summary.${dhs_id}.tsv"
     """
+    echo summary_v1.1
     python3 $moduleDir/bin/generate_summary.py \
         ${dhs_id} \
         ${diff_data} \
