@@ -53,6 +53,23 @@ process diff_summary {
 }
 
 
+workflow summary_only {
+    Channel.fromPath("${params.outdir}/diff_data.*.npz")
+        | map { f ->
+            def dhs_id = f.baseName.replaceFirst(/^diff_data\./, '')
+            tuple(dhs_id, f)
+        }
+        | diff_summary
+        | map(it -> it[1])
+        | collectFile(
+            name: 'diff_test_summary.tsv',
+            storeDir: params.outdir,
+            skip: 1,
+            keepHeader: true
+        )
+}
+
+
 workflow {
     Channel.fromPath(params.dhs_index)
         | splitCsv(header: true, sep: '\t')
