@@ -4,6 +4,7 @@ nextflow.enable.dsl = 2
 params.conda = "$moduleDir/environment.yml"
 params.footprints_metadata = '/net/seq/data2/projects/ENCODE4Plus/REGULOME/footprints/fp_meta_filtered.tsv'
 params.dhs_index = '/net/seq/data2/projects/ENCODE4Plus/REGULOME/footprints/cons_dhs.tsv'
+params.nested_config = ''   // JSON from differential_bayesian.hyper; empty = package defaults
 
 
 process diff_footprints {
@@ -25,8 +26,8 @@ process diff_footprints {
         ${dhs_id} \
         ${params.dhs_index} \
         ${params.footprints_metadata} \
-        ${params.fp_index_w_hotspots_path} \
-        ${name}
+        ${name} \
+        ${params.nested_config}
     """
 }
 
