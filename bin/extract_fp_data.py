@@ -15,12 +15,15 @@ def load_counts(interval: GenomicInterval, sample_data: pd.DataFrame) -> DataBun
     return FootprintsDataLoader()._load(data, footprints_metadata=sample_data, calc_posteriors=False)
 
 
+def load_dhs(dhs_id: str, dhs_index: str, sample_data: pd.DataFrame) -> DataBundle:
+    dhs = pd.read_table(dhs_index).set_index("dhs_id").loc[[dhs_id]].reset_index()
+    return load_counts(df_to_genomic_intervals(dhs, extra_columns=["dhs_id"])[0], sample_data)
+
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     for name in ("dhs_id", "dhs_index", "metadata", "output"):
         p.add_argument(name)
     a = p.parse_args()
-    dhs = pd.read_table(a.dhs_index).set_index("dhs_id").loc[[a.dhs_id]].reset_index()
-    interval = df_to_genomic_intervals(dhs, extra_columns=["dhs_id"])[0]
-    data = load_counts(interval, pd.read_table(a.metadata).set_index("sample_id"))
+    data = load_dhs(a.dhs_id, a.dhs_index, pd.read_table(a.metadata).set_index("sample_id"))
     save_data_results(DifferentialFootprintLoader()._load(data), a.output)
