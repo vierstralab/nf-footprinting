@@ -20,7 +20,7 @@ For each sample, `main.nf` learns a dispersion model on the sample's hotspots (`
  3) Fill in the parameters in `params.config` (see [Config](#config)); any of them can also be given on the command line
  4) Run:
 ```
-nextflow run main.nf -profile Altius --samples_file /path/to/samples.tsv
+nextflow run main.nf -profile Altius --samples_file /path/to/samples.tsv -resume
 ```
 
 ## Config
@@ -63,15 +63,13 @@ It reads `sample_id` and the `hotspots_column` column from `samples_file`, and `
 3. Merges the chunks into `all_samples.bedgraph.gz` (+ `.tbi`): per-nucleotide `-log(1 - posterior)` for every sample.
 4. Writes `per_dataset/footprints.${sample_id}.0p01.bed.gz` for each sample: positions with `-log(1 - posterior)` > 2, extended by 3 bp and merged.
 
-Additional parameters: `footprints_dir`, `threads` (CPUs per `ftd posterior` job, default 1). The merge steps use the `highmem` label (`bigmem` queue in the `Altius` profile).
-
 Other entry points, both taking `--posterior_meta` (a `posterior_metadata.tsv`):
 - `-entry fromInterval` - reuses the hotspot chunks from a previous run (`${outdir}/hotspot_chunks/`)
 - `-entry retrieveFootprints` - only step 4, from existing merged posteriors (`tabix_file` column)
 
 ## Differential footprints
 
-`differential_footprints.nf` finds footprints and differential footprints (positions where some groups of samples are more or less protected than the others) in each DHS, with the `differential_bayesian` module of footprint-tools ([methods](https://github.com/vierstralab/footprint-tools/blob/HEAD/footprint_tools/stats/differential_bayesian/methods.md)). It uses the per-sample results of `main.nf`.
+`differential_footprints.nf` finds differential footprints in each DHS, with the `differential_bayesian` module of footprint-tools ([methods](https://github.com/vierstralab/footprint-tools/blob/HEAD/footprint_tools/stats/differential_bayesian/methods.md)). It uses the per-sample results of `main.nf`.
 
 ```
 nextflow run differential_footprints.nf -profile Altius \
