@@ -197,7 +197,7 @@ process compress_and_tabix {
             row.sample_id,
             file(row.cram_file), 
             file(row?.cram_index ?: "${row.cram_file}.crai"),
-            file(row.hotspots_file))
+            file(row[params.hotspots_column]))
         )
         | footprintsCalling
  }
