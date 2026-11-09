@@ -4,7 +4,7 @@ nextflow.enable.dsl = 2
 params.conda = "$moduleDir/environment.yml"
 params.footprints_metadata = '/net/seq/data2/projects/ENCODE4Plus/REGULOME/footprints/fp_meta_filtered.tsv'
 params.dhs_index = '/net/seq/data2/projects/ENCODE4Plus/REGULOME/footprints/cons_dhs.tsv'
-params.d_min = 0.6                  // call threshold for the effect d = 2W - 1 (must be one of the package's report_d)
+params.d_min = 0.5 // call threshold
 
 
 // Per DHS: stage-1 segmentation, footprints and differential p-values (footprint_tools differential_bayesian)
