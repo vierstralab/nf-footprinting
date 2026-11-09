@@ -2,17 +2,26 @@
 
 Nextflow wrapper for [footprint-tools](https://github.com/vierstralab/footprint-tools) ([docs](https://footprint-tools.readthedocs.io/en/latest/))
 
+Three workflows, run in this order:
+1. `main.nf` - per-sample footprints ([below](#per-sample-footprints))
+2. `consensus_footprints.nf` - footprints called jointly across samples ([Consensus footprints](#consensus-footprints))
+3. `differential_footprints.nf` - differential footprints between groups of samples ([Differential footprints](#differential-footprints))
+
 ## Requirements
 - Nextflow (https://www.nextflow.io/)
 - conda (https://docs.conda.io/en/latest/)
 
+## Per-sample footprints
 
+For each sample, `main.nf` learns a dispersion model on the sample's hotspots (`ftd learn_dm`), computes per-nucleotide cleavage statistics (`ftd detect`), extracts footprints at several FDR thresholds and fits the Beta prior for `ftd posterior` (`ftd learn_beta`).
 
-## Usage
- 1) Create conda environment from `environment.yml` file or use the existing one
- 2) Modify `nextflow.config` to computing enviroment specifications
- 3) Fill in params paths in ```params.config```. You can also specify parameters in command line. Please find detailed explanation of the parameters in the [Config section](#config).
- 4) Run the pipeline with `nextflow run main.nf -profile Altius`
+ 1) Create the conda environment from `environment.yml` (or let Nextflow create it, see `conda` below)
+ 2) Modify `nextflow.config` to your computing environment
+ 3) Fill in the parameters in `params.config` (see [Config](#config)); any of them can also be given on the command line
+ 4) Run:
+```
+nextflow run main.nf -profile Altius --samples_file /path/to/samples.tsv
+```
 
 ## Config
 There are two config files in the repository.
@@ -80,3 +89,7 @@ Output (in `outdir`):
 - `diff.{calls,regions,region_groups,dhs,cutoffs}.tsv` and `diff.summary.pdf` - genome-wide report: Benjamini-Hochberg over all positions and over DHSs, calls at the `d_min` cutoff, summary page
 
 `-entry report` rebuilds only the genome-wide report from the files already in `${outdir}/per_dhs/`.
+
+## Authors
+
+Sergey Abramov, Anas Fathul, Alexandr Boytsov, John Hutchinson
