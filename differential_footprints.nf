@@ -10,7 +10,7 @@ params.d_min = 0.5 // call threshold
 // Per DHS: stage-1 segmentation, footprints and differential p-values (footprint_tools differential_bayesian)
 process diff_footprints {
     tag "${dhs_id}"
-    conda "/home/sabramov/miniconda3/envs/pytorch"
+    conda params.conda
     publishDir "${params.outdir}/per_dhs/"
     label "diff_footprints"
 
@@ -36,7 +36,7 @@ process diff_footprints {
 
 // Genome-wide: BH over all positions and over DHSs, calls, tables and the summary page
 process diff_report {
-    conda "/home/sabramov/miniconda3/envs/pytorch"
+    conda params.conda
     publishDir params.outdir
     label "diff_report"
 

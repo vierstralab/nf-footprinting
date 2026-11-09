@@ -59,3 +59,24 @@ Additional parameters: `footprints_dir`, `threads` (CPUs per `ftd posterior` job
 Other entry points, both taking `--posterior_meta` (a `posterior_metadata.tsv`):
 - `-entry fromInterval` - reuses the hotspot chunks from a previous run (`${outdir}/hotspot_chunks/`)
 - `-entry retrieveFootprints` - only step 4, from existing merged posteriors (`tabix_file` column)
+
+## Differential footprints
+
+`differential_footprints.nf` finds footprints and differential footprints (positions where some groups of samples are more or less protected than the others) in each DHS, with the `differential_bayesian` module of footprint-tools ([methods](https://github.com/vierstralab/footprint-tools/blob/HEAD/footprint_tools/stats/differential_bayesian/methods.md)). It uses the per-sample results of `main.nf`.
+
+```
+nextflow run differential_footprints.nf -profile Altius \
+    --dhs_index /path/to/dhs_index.tsv \
+    --footprints_metadata /path/to/footprints_metadata.tsv
+```
+
+Parameters:
+- `dhs_index` - tab-delimited file with a header: `dhs_id` and the DHS coordinates (`#chr` or `chrom`, `start`, `end`). One job per DHS.
+- `footprints_metadata` - tab-delimited file with a header, one row per sample: `sample_id`, `dm_file` and `tabix_file` (`${sample_id}.dm.json` and `${sample_id}.out.bedgraph.gz` from `main.nf`), `extended_annotation` (group of the sample, e.g. tissue or cell type; differential footprints are tested between these groups).
+- `d_min` - call threshold for the effect size `d` (default 0.5).
+
+Output (in `outdir`):
+- `per_dhs/diff_data.${dhs_id}.npz` - per-DHS results (segmentation, footprints, differential p-values); read them with `footprint_tools.stats.differential_bayesian.api.load_fit`
+- `diff.{calls,regions,region_groups,dhs,cutoffs}.tsv` and `diff.summary.pdf` - genome-wide report: Benjamini-Hochberg over all positions and over DHSs, calls at the `d_min` cutoff, summary page
+
+`-entry report` rebuilds only the genome-wide report from the files already in `${outdir}/per_dhs/`.
