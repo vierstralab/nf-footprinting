@@ -2,9 +2,8 @@ name: footprints-calling
 channels:
   - conda-forge
   - bioconda
-  - defaults
 dependencies:
-  - python=3.8
+  - python=3.10
   - pysam
   - bedops
   - bcftools=1.15
@@ -12,8 +11,9 @@ dependencies:
   - bedtools
   - pyfaidx
   - samtools=1.15
+  - polars  # bin/extract_fp_data.py
+  - numba
   - pip
-  - cython
   - pip:
-    - footprint-tools
-prefix: /home/sabramov/miniconda3/envs/footprints-calling
+    - git+https://github.com/vierstralab/genome-tools.git@v3.0.0
+    - git+https://github.com/vierstralab/footprint-tools.git

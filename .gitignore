@@ -1,1 +1,4 @@
 .nextflow*
+__pycache__/
+*.py[cod]
+work/

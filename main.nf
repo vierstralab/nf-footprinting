@@ -42,9 +42,7 @@ process learn_dm {
         ${bam_file} \
         ${params.genome_fasta_file} \
         --n_threads ${task.cpus} \
-        > dm.json
-
-    mv dm.json ${name}
+        --outfile ${name}
     """
 }
 
@@ -62,8 +60,7 @@ process plot_dm {
     script:
     name = "${id}.dm.pdf"
     """
-    ftd plot_dm ${dispersion_model} --histograms 5,50,100 > dm.pdf
-    mv dm.pdf ${name}
+    ftd plot_dm ${dispersion_model} --histograms 5,50,100 --outfile ${name}
     """
 }
 
@@ -133,8 +130,8 @@ process retrieve_dm {
     ftd learn_beta \
         --fdr_cutoff 0.05 \
         --exp_cutoff 10 \
+        --outfile ${name} \
         ${bedgraph}
-    mv beta.txt ${name}
     """
 }
 
@@ -197,7 +194,7 @@ process compress_and_tabix {
     Channel.fromPath(params.samples_file)
         | splitCsv(header:true, sep:'\t')
         | map(row -> tuple(
-            row.ag_id,
+            row.sample_id,
             file(row.cram_file), 
             file(row?.cram_index ?: "${row.cram_file}.crai"),
             file(row.hotspots_file))
@@ -210,9 +207,9 @@ process compress_and_tabix {
     Channel.fromPath(params.samples_file)
         | splitCsv(header:true, sep:'\t')
         | map(row -> tuple(
-            row.ag_id,
-            file("$launchDir/output/${row.ag_id}/${row.ag_id}.out.bedgraph"),
-            file("$launchDir/output/${row.ag_id}/${row.ag_id}.out.bedgraph.gz")
+            row.sample_id,
+            file("$launchDir/output/${row.sample_id}/${row.sample_id}.out.bedgraph"),
+            file("$launchDir/output/${row.sample_id}/${row.sample_id}.out.bedgraph.gz")
             )
         )
         | filter { it[1].exists() }
